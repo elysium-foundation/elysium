@@ -24,7 +24,7 @@ use scale_codec::Encode;
 use serde::Serialize;
 use tempfile::tempdir;
 // Substrate
-use sc_block_builder::BlockBuilderProvider;
+use sc_block_builder::BlockBuilderBuilder;
 use sc_cli::DatabasePruningMode;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
@@ -163,7 +163,7 @@ fn schema_create_fails_if_value_is_not_empty() {
 
 	let data_before = vec![(EthereumStorageSchema::V2, H256::default())];
 
-	let _ = backend
+	backend
 		.meta()
 		.write_ethereum_schema(data_before.clone())
 		.expect("data inserted in temporary db");
@@ -196,9 +196,9 @@ fn schema_read_works() {
 
 	let data = vec![(EthereumStorageSchema::V2, H256::default())];
 
-	let _ = backend
+	backend
 		.meta()
-		.write_ethereum_schema(data.clone())
+		.write_ethereum_schema(data)
 		.expect("data inserted in temporary db");
 
 	// Run the command
@@ -208,7 +208,7 @@ fn schema_read_works() {
 		Operation::Read,
 		Column::Meta
 	)
-	.run(client, backend.clone())
+	.run(client, backend)
 	.is_ok());
 }
 
@@ -253,9 +253,9 @@ fn schema_delete_works() {
 
 	let data = vec![(EthereumStorageSchema::V2, H256::default())];
 
-	let _ = backend
+	backend
 		.meta()
-		.write_ethereum_schema(data.clone())
+		.write_ethereum_schema(data)
 		.expect("data inserted in temporary db");
 	// Run the command
 	assert!(cmd(
@@ -313,7 +313,7 @@ fn tips_create_fails_if_value_is_not_empty() {
 
 	let data_before = vec![H256::default()];
 
-	let _ = backend
+	backend
 		.meta()
 		.write_current_syncing_tips(data_before.clone())
 		.expect("data inserted in temporary db");
@@ -345,9 +345,9 @@ fn tips_read_works() {
 
 	let data = vec![H256::default()];
 
-	let _ = backend
+	backend
 		.meta()
-		.write_current_syncing_tips(data.clone())
+		.write_current_syncing_tips(data)
 		.expect("data inserted in temporary db");
 	// Run the command
 	assert!(cmd(
@@ -356,7 +356,7 @@ fn tips_read_works() {
 		Operation::Read,
 		Column::Meta
 	)
-	.run(client, backend.clone())
+	.run(client, backend)
 	.is_ok());
 }
 
@@ -401,9 +401,9 @@ fn tips_delete_works() {
 
 	let data = vec![H256::default()];
 
-	let _ = backend
+	backend
 		.meta()
-		.write_current_syncing_tips(data.clone())
+		.write_current_syncing_tips(data)
 		.expect("data inserted in temporary db");
 	// Run the command
 	assert!(cmd(
@@ -433,9 +433,9 @@ fn non_existent_meta_static_keys_are_no_op() {
 
 	let data = vec![(EthereumStorageSchema::V1, H256::default())];
 
-	let _ = backend
+	backend
 		.meta()
-		.write_ethereum_schema(data.clone())
+		.write_ethereum_schema(data)
 		.expect("data inserted in temporary db");
 
 	// Run the Create command
@@ -546,7 +546,12 @@ fn commitment_create() {
 
 	// Build a block and fill the pallet-ethereum status.
 	let key = storage_prefix_build(PALLET_ETHEREUM, ETHEREUM_CURRENT_TRANSACTION_STATUS);
-	let mut builder = client.new_block(Default::default()).unwrap();
+	let chain = client.chain_info();
+	let mut builder = BlockBuilderBuilder::new(&*client)
+		.on_parent_block(chain.best_hash)
+		.with_parent_block_number(chain.best_number)
+		.build()
+		.unwrap();
 	builder
 		.push_storage_change(key, Some(statuses.encode()))
 		.unwrap();
@@ -579,8 +584,8 @@ fn commitment_create() {
 	);
 
 	// Expect the offchain-stored transaction metadata to match the one we stored in the runtime.
-	let expected_transaction_metadata = fc_db::TransactionMetadata {
-		block_hash,
+	let expected_transaction_metadata = fc_api::TransactionMetadata {
+		substrate_block_hash: block_hash,
 		ethereum_block_hash,
 		ethereum_index: 0,
 	};
@@ -596,7 +601,7 @@ fn commitment_create() {
 		Operation::Create,
 		Column::Block
 	)
-	.run(Arc::clone(&client), backend.clone())
+	.run(Arc::clone(&client), backend)
 	.is_err());
 }
 
@@ -611,10 +616,13 @@ fn commitment_update() {
 
 	// Get some transaction status.
 	let t1 = fp_rpc::TransactionStatus::default();
-	let mut t2 = fp_rpc::TransactionStatus::default();
-	t2.transaction_hash =
-		H256::from_str("0x2200000000000000000000000000000000000000000000000000000000000000")
-			.unwrap();
+	let t2 = fp_rpc::TransactionStatus {
+		transaction_hash: H256::from_str(
+			"0x2200000000000000000000000000000000000000000000000000000000000000",
+		)
+		.unwrap(),
+		..Default::default()
+	};
 	let t1_hash = t1.transaction_hash;
 	let t2_hash = t2.transaction_hash;
 	let statuses_a1 = vec![t1.clone()];
@@ -625,8 +633,10 @@ fn commitment_update() {
 	// First we create block and insert data in the offchain db.
 
 	// Build a block A1 and fill the pallet-ethereum status.
-	let mut builder = client
-		.new_block_at(client.genesis_hash(), Default::default(), false)
+	let mut builder = BlockBuilderBuilder::new(&*client)
+		.on_parent_block(client.genesis_hash())
+		.with_parent_block_number(0)
+		.build()
 		.unwrap();
 	builder
 		.push_storage_change(key.clone(), Some(statuses_a1.encode()))
@@ -646,7 +656,7 @@ fn commitment_update() {
 	let ethereum_block_hash = H256::default();
 	assert!(cmd(
 		format!("{:?}", ethereum_block_hash),
-		Some(test_value_path.clone()),
+		Some(test_value_path),
 		Operation::Create,
 		Column::Block
 	)
@@ -660,8 +670,8 @@ fn commitment_update() {
 	);
 
 	// Expect the offchain-stored transaction metadata to match the one we stored in the runtime.
-	let expected_transaction_metadata_a1_t1 = fc_db::TransactionMetadata {
-		block_hash: block_a1_hash,
+	let expected_transaction_metadata_a1_t1 = fc_api::TransactionMetadata {
+		substrate_block_hash: block_a1_hash,
 		ethereum_block_hash,
 		ethereum_index: 0,
 	};
@@ -675,8 +685,10 @@ fn commitment_update() {
 	// Build a block A2 and fill the pallet-ethereum status.
 	let tmp = tempdir().expect("create a temporary directory");
 
-	let mut builder = client
-		.new_block_at(client.genesis_hash(), Default::default(), false)
+	let mut builder = BlockBuilderBuilder::new(&*client)
+		.on_parent_block(client.genesis_hash())
+		.with_parent_block_number(0)
+		.build()
 		.unwrap();
 	builder
 		.push_storage_change(key, Some(statuses_a2.encode()))
@@ -692,7 +704,7 @@ fn commitment_update() {
 	let ethereum_block_hash = H256::default();
 	assert!(cmd(
 		format!("{:?}", ethereum_block_hash),
-		Some(test_value_path.clone()),
+		Some(test_value_path),
 		Operation::Update,
 		Column::Block
 	)
@@ -706,13 +718,13 @@ fn commitment_update() {
 	);
 
 	// Expect the offchain-stored transaction metadata to have data for both blocks.
-	let expected_transaction_metadata_a2_t1 = fc_db::TransactionMetadata {
-		block_hash: block_a2_hash,
+	let expected_transaction_metadata_a2_t1 = fc_api::TransactionMetadata {
+		substrate_block_hash: block_a2_hash,
 		ethereum_block_hash,
 		ethereum_index: 0,
 	};
-	let expected_transaction_metadata_a2_t2 = fc_db::TransactionMetadata {
-		block_hash: block_a2_hash,
+	let expected_transaction_metadata_a2_t2 = fc_api::TransactionMetadata {
+		substrate_block_hash: block_a2_hash,
 		ethereum_block_hash,
 		ethereum_index: 1,
 	};
@@ -745,7 +757,12 @@ fn mapping_read_works() {
 
 	// Build a block and fill the pallet-ethereum status.
 	let key = storage_prefix_build(PALLET_ETHEREUM, ETHEREUM_CURRENT_TRANSACTION_STATUS);
-	let mut builder = client.new_block(Default::default()).unwrap();
+	let chain = client.chain_info();
+	let mut builder = BlockBuilderBuilder::new(&*client)
+		.on_parent_block(chain.best_hash)
+		.with_parent_block_number(chain.best_number)
+		.build()
+		.unwrap();
 	builder
 		.push_storage_change(key, Some(statuses.encode()))
 		.unwrap();
@@ -764,7 +781,7 @@ fn mapping_read_works() {
 	let ethereum_block_hash = H256::default();
 	assert!(cmd(
 		format!("{:?}", ethereum_block_hash),
-		Some(test_value_path.clone()),
+		Some(test_value_path),
 		Operation::Create,
 		Column::Block,
 	)
@@ -788,6 +805,6 @@ fn mapping_read_works() {
 		Operation::Read,
 		Column::Transaction
 	)
-	.run(Arc::clone(&client), backend.clone())
+	.run(Arc::clone(&client), backend)
 	.is_ok());
 }

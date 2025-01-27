@@ -31,17 +31,23 @@ mod receipt;
 mod sync;
 mod transaction;
 mod transaction_request;
+#[cfg(feature = "txpool")]
 mod txpool;
 mod work;
 
 pub mod pubsub;
 
+use ethereum::TransactionV2 as EthereumTransaction;
+use ethereum_types::H160;
+
+#[cfg(feature = "txpool")]
+pub use self::txpool::{Summary, TransactionMap, TxPoolResult};
 pub use self::{
 	account_info::{AccountInfo, EthAccount, ExtAccountInfo, RecoveredAccount, StorageProof},
 	block::{Block, BlockTransactions, Header, Rich, RichBlock, RichHeader},
-	block_number::BlockNumber,
+	block_number::BlockNumberOrHash,
 	bytes::Bytes,
-	call_request::{CallRequest, CallStateOverride},
+	call_request::CallStateOverride,
 	fee::{FeeHistory, FeeHistoryCache, FeeHistoryCacheItem, FeeHistoryCacheLimit},
 	filter::{
 		Filter, FilterAddress, FilterChanges, FilterPool, FilterPoolItem, FilterType,
@@ -56,6 +62,10 @@ pub use self::{
 	},
 	transaction::{LocalTransactionStatus, RichRawTransaction, Transaction},
 	transaction_request::{TransactionMessage, TransactionRequest},
-	txpool::{Get, Summary, TransactionMap, TxPoolResult, TxPoolTransaction},
 	work::Work,
 };
+
+/// The trait that used to build types from the `from` address and ethereum `transaction`.
+pub trait BuildFrom {
+	fn build_from(from: H160, transaction: &EthereumTransaction) -> Self;
+}

@@ -16,7 +16,7 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![deny(unused_crate_dependencies)]
+#![warn(unused_crate_dependencies)]
 
 mod precompile;
 mod validation;
@@ -24,11 +24,11 @@ mod validation;
 use frame_support::weights::{constants::WEIGHT_REF_TIME_PER_MILLIS, Weight};
 use scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-#[cfg(feature = "std")]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use sp_core::{H160, H256, U256};
 use sp_runtime::Perbill;
-use sp_std::vec::Vec;
+use sp_std::{collections::btree_map::BTreeMap, vec::Vec};
 
 pub use evm::{
 	backend::{Basic as Account, Log},
@@ -43,12 +43,12 @@ pub use self::{
 	},
 	validation::{
 		CheckEvmTransaction, CheckEvmTransactionConfig, CheckEvmTransactionInput,
-		InvalidEvmTransactionError,
+		TransactionValidationError,
 	},
 };
 
-#[derive(Clone, Eq, PartialEq, Default, Encode, Decode)]
-#[cfg_attr(feature = "std", derive(Debug, Serialize, Deserialize))]
+#[derive(Clone, Eq, PartialEq, Default, Debug, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// External input from the transaction.
 pub struct Vicinity {
 	/// Current transaction gas price.
@@ -73,8 +73,8 @@ pub enum AccessedStorage {
 	AccountStorages((H160, H256)),
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug, Serialize, Deserialize))]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct WeightInfo {
 	pub ref_time_limit: Option<u64>,
 	pub proof_size_limit: Option<u64>,
@@ -108,6 +108,7 @@ impl WeightInfo {
 			_ => return Err("must provide Some valid weight limit or None"),
 		})
 	}
+
 	fn try_consume(&self, cost: u64, limit: u64, usage: u64) -> Result<u64, ExitError> {
 		let usage = usage.checked_add(cost).ok_or(ExitError::OutOfGas)?;
 		if usage > limit {
@@ -115,6 +116,7 @@ impl WeightInfo {
 		}
 		Ok(usage)
 	}
+
 	pub fn try_record_ref_time_or_fail(&mut self, cost: u64) -> Result<(), ExitError> {
 		if let (Some(ref_time_usage), Some(ref_time_limit)) =
 			(self.ref_time_usage, self.ref_time_limit)
@@ -127,6 +129,7 @@ impl WeightInfo {
 		}
 		Ok(())
 	}
+
 	pub fn try_record_proof_size_or_fail(&mut self, cost: u64) -> Result<(), ExitError> {
 		if let (Some(proof_size_usage), Some(proof_size_limit)) =
 			(self.proof_size_usage, self.proof_size_limit)
@@ -139,22 +142,41 @@ impl WeightInfo {
 		}
 		Ok(())
 	}
+
 	pub fn refund_proof_size(&mut self, amount: u64) {
 		if let Some(proof_size_usage) = self.proof_size_usage {
 			let proof_size_usage = proof_size_usage.saturating_sub(amount);
 			self.proof_size_usage = Some(proof_size_usage);
 		}
 	}
+
 	pub fn refund_ref_time(&mut self, amount: u64) {
 		if let Some(ref_time_usage) = self.ref_time_usage {
 			let ref_time_usage = ref_time_usage.saturating_sub(amount);
 			self.ref_time_usage = Some(ref_time_usage);
 		}
 	}
+	pub fn remaining_proof_size(&self) -> Option<u64> {
+		if let (Some(proof_size_usage), Some(proof_size_limit)) =
+			(self.proof_size_usage, self.proof_size_limit)
+		{
+			return Some(proof_size_limit.saturating_sub(proof_size_usage));
+		}
+		None
+	}
+
+	pub fn remaining_ref_time(&self) -> Option<u64> {
+		if let (Some(ref_time_usage), Some(ref_time_limit)) =
+			(self.ref_time_usage, self.ref_time_limit)
+		{
+			return Some(ref_time_limit.saturating_sub(ref_time_usage));
+		}
+		None
+	}
 }
 
-#[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug, Serialize, Deserialize))]
+#[derive(Clone, Eq, PartialEq, Debug, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UsedGas {
 	/// The used_gas as returned by the evm gasometer on exit.
 	pub standard: U256,
@@ -163,8 +185,8 @@ pub struct UsedGas {
 	pub effective: U256,
 }
 
-#[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug, Serialize, Deserialize))]
+#[derive(Clone, Eq, PartialEq, Debug, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ExecutionInfoV2<T> {
 	pub exit_reason: ExitReason,
 	pub value: T,
@@ -176,15 +198,15 @@ pub struct ExecutionInfoV2<T> {
 pub type CallInfo = ExecutionInfoV2<Vec<u8>>;
 pub type CreateInfo = ExecutionInfoV2<H160>;
 
-#[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug, Serialize, Deserialize))]
+#[derive(Clone, Eq, PartialEq, Debug, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CallOrCreateInfo {
 	Call(CallInfo),
 	Create(CreateInfo),
 }
 
-#[derive(Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Debug, Serialize, Deserialize))]
+#[derive(Clone, Eq, PartialEq, Debug, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ExecutionInfo<T> {
 	pub exit_reason: ExitReason,
 	pub value: T,
@@ -193,15 +215,15 @@ pub struct ExecutionInfo<T> {
 }
 
 /// Account definition used for genesis block construction.
-#[cfg(feature = "std")]
-#[derive(Clone, Eq, PartialEq, Encode, Decode, Debug, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Debug, Encode, Decode)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GenesisAccount {
 	/// Account nonce.
 	pub nonce: U256,
 	/// Account balance.
 	pub balance: U256,
 	/// Full account storage.
-	pub storage: std::collections::BTreeMap<H256, H256>,
+	pub storage: BTreeMap<H256, H256>,
 	/// Account code.
 	pub code: Vec<u8>,
 }

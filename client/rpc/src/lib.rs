@@ -16,35 +16,42 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// #![allow(
-// 	clippy::too_many_arguments,
-// 	clippy::large_enum_variant,
-// 	clippy::manual_range_contains,
-// 	clippy::explicit_counter_loop,
-// 	clippy::len_zero,
-// 	clippy::new_without_default
-// )]
-// #![deny(unused_crate_dependencies)]
+#![allow(
+	clippy::too_many_arguments,
+	clippy::large_enum_variant,
+	clippy::manual_range_contains,
+	clippy::explicit_counter_loop,
+	clippy::len_zero,
+	clippy::new_without_default
+)]
+#![warn(unused_crate_dependencies)]
 
+mod cache;
+mod debug;
 mod eth;
 mod eth_pubsub;
 mod net;
 mod signer;
+#[cfg(feature = "txpool")]
 mod txpool;
 mod web3;
 
+#[cfg(feature = "txpool")]
+pub use self::txpool::TxPool;
 pub use self::{
-	eth::{format, EstimateGasAdapter, Eth, EthBlockDataCacheTask, EthConfig, EthFilter, EthTask},
+	cache::{EthBlockDataCacheTask, EthTask},
+	debug::Debug,
+	eth::{format, pending, EstimateGasAdapter, Eth, EthConfig, EthFilter},
 	eth_pubsub::{EthPubSub, EthereumSubIdProvider},
 	net::Net,
 	signer::{EthDevSigner, EthSigner},
-	txpool::TxPool,
 	web3::Web3,
 };
-
 pub use ethereum::TransactionV2 as EthereumTransaction;
+#[cfg(feature = "txpool")]
+pub use fc_rpc_core::TxPoolApiServer;
 pub use fc_rpc_core::{
-	EthApiServer, EthFilterApiServer, EthPubSubApiServer, NetApiServer, TxPoolApiServer,
+	DebugApiServer, EthApiServer, EthFilterApiServer, EthPubSubApiServer, NetApiServer,
 	Web3ApiServer,
 };
 pub use fc_storage::{
@@ -67,11 +74,11 @@ pub mod frontier_backend_client {
 	use sp_io::hashing::{blake2_128, twox_128};
 	use sp_runtime::{
 		generic::BlockId,
-		traits::{Block as BlockT, UniqueSaturatedInto, Zero},
+		traits::{Block as BlockT, HashingFor, UniqueSaturatedInto},
 	};
 	use sp_state_machine::OverlayedChanges;
 	// Frontier
-	use fc_rpc_core::types::BlockNumber;
+	use fc_rpc_core::types::BlockNumberOrHash;
 
 	/// Implements a default runtime storage override.
 	/// It assumes that the balances and nonces are stored in pallet `system.account`, and
@@ -90,7 +97,7 @@ pub mod frontier_backend_client {
 
 		fn set_overlayed_changes(
 			client: &C,
-			overlayed_changes: &mut OverlayedChanges,
+			overlayed_changes: &mut OverlayedChanges<HashingFor<B>>,
 			block: B::Hash,
 			_version: u32,
 			address: H160,
@@ -143,7 +150,7 @@ pub mod frontier_backend_client {
 
 		fn set_overlayed_changes(
 			client: &C,
-			overlayed_changes: &mut OverlayedChanges,
+			overlayed_changes: &mut OverlayedChanges<HashingFor<B>>,
 			block: B::Hash,
 			_version: u32,
 			address: H160,
@@ -185,33 +192,33 @@ pub mod frontier_backend_client {
 
 	pub async fn native_block_id<B: BlockT, C>(
 		client: &C,
-		backend: &(dyn fc_db::BackendReader<B> + Send + Sync),
-		number: Option<BlockNumber>,
+		backend: &dyn fc_api::Backend<B>,
+		number: Option<BlockNumberOrHash>,
 	) -> RpcResult<Option<BlockId<B>>>
 	where
 		B: BlockT,
 		C: HeaderBackend<B> + 'static,
 	{
-		Ok(match number.unwrap_or(BlockNumber::Latest) {
-			BlockNumber::Hash { hash, .. } => {
+		Ok(match number.unwrap_or(BlockNumberOrHash::Latest) {
+			BlockNumberOrHash::Hash { hash, .. } => {
 				if let Ok(Some(hash)) = load_hash::<B, C>(client, backend, hash).await {
 					Some(BlockId::Hash(hash))
 				} else {
 					None
 				}
 			}
-			BlockNumber::Num(number) => Some(BlockId::Number(number.unique_saturated_into())),
-			BlockNumber::Latest => Some(BlockId::Hash(client.info().best_hash)),
-			BlockNumber::Earliest => Some(BlockId::Number(Zero::zero())),
-			BlockNumber::Pending => None,
-			BlockNumber::Safe => Some(BlockId::Hash(client.info().finalized_hash)),
-			BlockNumber::Finalized => Some(BlockId::Hash(client.info().finalized_hash)),
+			BlockNumberOrHash::Num(number) => Some(BlockId::Number(number.unique_saturated_into())),
+			BlockNumberOrHash::Latest => Some(BlockId::Hash(client.info().best_hash)),
+			BlockNumberOrHash::Earliest => Some(BlockId::Hash(client.info().genesis_hash)),
+			BlockNumberOrHash::Pending => None,
+			BlockNumberOrHash::Safe => Some(BlockId::Hash(client.info().finalized_hash)),
+			BlockNumberOrHash::Finalized => Some(BlockId::Hash(client.info().finalized_hash)),
 		})
 	}
 
 	pub async fn load_hash<B: BlockT, C>(
 		client: &C,
-		backend: &(dyn fc_db::BackendReader<B> + Send + Sync),
+		backend: &dyn fc_api::Backend<B>,
 		hash: H256,
 	) -> RpcResult<Option<B::Hash>>
 	where
@@ -248,7 +255,7 @@ pub mod frontier_backend_client {
 
 	pub async fn load_transactions<B: BlockT, C>(
 		client: &C,
-		backend: &(dyn fc_db::BackendReader<B> + Send + Sync),
+		backend: &dyn fc_api::Backend<B>,
 		transaction_hash: H256,
 		only_canonical: bool,
 	) -> RpcResult<Option<(H256, u32)>>
@@ -263,7 +270,7 @@ pub mod frontier_backend_client {
 
 		transaction_metadata
 			.iter()
-			.find(|meta| is_canon::<B, C>(client, meta.block_hash))
+			.find(|meta| is_canon::<B, C>(client, meta.substrate_block_hash))
 			.map_or_else(
 				|| {
 					if !only_canonical && transaction_metadata.len() > 0 {
@@ -280,24 +287,29 @@ pub mod frontier_backend_client {
 	}
 }
 
-pub fn err<T: ToString>(code: i32, message: T, data: Option<&[u8]>) -> jsonrpsee::core::Error {
-	jsonrpsee::core::Error::Call(jsonrpsee::types::error::CallError::Custom(
-		jsonrpsee::types::error::ErrorObject::owned(
-			code,
-			message.to_string(),
-			data.map(|bytes| {
-				jsonrpsee::core::to_json_raw_value(&format!("0x{}", hex::encode(bytes)))
-					.expect("fail to serialize data")
-			}),
-		),
-	))
+pub fn err<T: ToString>(
+	code: i32,
+	message: T,
+	data: Option<&[u8]>,
+) -> jsonrpsee::types::error::ErrorObjectOwned {
+	jsonrpsee::types::error::ErrorObject::owned(
+		code,
+		message.to_string(),
+		data.map(|bytes| {
+			jsonrpsee::core::to_json_raw_value(&format!("0x{}", hex::encode(bytes)))
+				.expect("fail to serialize data")
+		}),
+	)
 }
 
-pub fn internal_err<T: ToString>(message: T) -> jsonrpsee::core::Error {
+pub fn internal_err<T: ToString>(message: T) -> jsonrpsee::types::error::ErrorObjectOwned {
 	err(jsonrpsee::types::error::INTERNAL_ERROR_CODE, message, None)
 }
 
-pub fn internal_err_with_data<T: ToString>(message: T, data: &[u8]) -> jsonrpsee::core::Error {
+pub fn internal_err_with_data<T: ToString>(
+	message: T,
+	data: &[u8],
+) -> jsonrpsee::types::error::ErrorObjectOwned {
 	err(
 		jsonrpsee::types::error::INTERNAL_ERROR_CODE,
 		message,
@@ -336,7 +348,7 @@ mod tests {
 	use std::{path::PathBuf, sync::Arc};
 
 	use futures::executor;
-	use sc_block_builder::BlockBuilderProvider;
+	use sc_block_builder::BlockBuilderBuilder;
 	use sp_blockchain::HeaderBackend;
 	use sp_consensus::BlockOrigin;
 	use sp_runtime::{
@@ -384,15 +396,23 @@ mod tests {
 		let ethereum_block_hash = sp_core::H256::random();
 
 		// G -> A1.
-		let mut builder = client.new_block(Default::default()).unwrap();
+		let chain = client.chain_info();
+		let mut builder = BlockBuilderBuilder::new(&*client)
+			.on_parent_block(chain.best_hash)
+			.with_parent_block_number(chain.best_number)
+			.build()
+			.unwrap();
 		builder.push_storage_change(vec![1], None).unwrap();
 		let a1 = builder.build().unwrap().block;
 		let a1_hash = a1.header.hash();
 		executor::block_on(client.import(BlockOrigin::Own, a1)).unwrap();
 
 		// A1 -> B1
-		let mut builder = client
-			.new_block_at(a1_hash, Default::default(), false)
+		let mut builder = BlockBuilderBuilder::new(&*client)
+			.on_parent_block(a1_hash)
+			.fetch_parent_block_number(&*client)
+			.unwrap()
+			.build()
 			.unwrap();
 		builder.push_storage_change(vec![1], None).unwrap();
 		let b1 = builder.build().unwrap().block;
@@ -420,8 +440,11 @@ mod tests {
 		);
 
 		// A1 -> B2
-		let mut builder = client
-			.new_block_at(a1_hash, Default::default(), false)
+		let mut builder = BlockBuilderBuilder::new(&*client)
+			.on_parent_block(a1_hash)
+			.fetch_parent_block_number(&*client)
+			.unwrap()
+			.build()
 			.unwrap();
 		builder.push_storage_change(vec![2], None).unwrap();
 		let b2 = builder.build().unwrap().block;
@@ -449,8 +472,11 @@ mod tests {
 		);
 
 		// B2 -> C1. B2 branch is now canon.
-		let mut builder = client
-			.new_block_at(b2_hash, Default::default(), false)
+		let mut builder = BlockBuilderBuilder::new(&*client)
+			.on_parent_block(b2_hash)
+			.fetch_parent_block_number(&*client)
+			.unwrap()
+			.build()
 			.unwrap();
 		builder.push_storage_change(vec![1], None).unwrap();
 		let c1 = builder.build().unwrap().block;

@@ -52,7 +52,7 @@
 
 // Ensure we're `no_std` when compiling for Wasm.
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(feature = "runtime-benchmarks", deny(unused_crate_dependencies))]
+#![warn(unused_crate_dependencies)]
 #![allow(clippy::too_many_arguments)]
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -68,11 +68,14 @@ pub mod weights;
 pub use evm::{
 	Config as EvmConfig, Context, ExitError, ExitFatal, ExitReason, ExitRevert, ExitSucceed,
 };
+use hash_db::Hasher;
 use impl_trait_for_tuples::impl_for_tuples;
+use scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 // Substrate
 use frame_support::{
-	dispatch::{DispatchResultWithPostInfo, MaxEncodedLen, Pays, PostDispatchInfo},
+	dispatch::{DispatchResultWithPostInfo, Pays, PostDispatchInfo},
+	storage::child::KillStorageResult,
 	traits::{
 		tokens::{
 			currency::Currency,
@@ -85,21 +88,19 @@ use frame_support::{
 	weights::Weight,
 };
 use frame_system::RawOrigin;
-use sp_core::{Decode, Encode, Hasher, H160, H256, U256};
+use sp_core::{H160, H256, U256};
 use sp_runtime::{
-	traits::{BadOrigin, Saturating, UniqueSaturatedInto, Zero},
+	traits::{BadOrigin, NumberFor, Saturating, UniqueSaturatedInto, Zero},
 	AccountId32, DispatchErrorWithPostInfo,
 };
-use sp_std::{cmp::min, vec::Vec};
+use sp_std::{cmp::min, collections::btree_map::BTreeMap, vec::Vec};
 // Frontier
 use fp_account::AccountId20;
-#[cfg(feature = "std")]
 use fp_evm::GenesisAccount;
 pub use fp_evm::{
 	Account, CallInfo, CreateInfo, ExecutionInfoV2 as ExecutionInfo, FeeCalculator,
-	InvalidEvmTransactionError, IsPrecompileResult, LinearCostPrecompile, Log, Precompile,
-	PrecompileFailure, PrecompileHandle, PrecompileOutput, PrecompileResult, PrecompileSet,
-	Vicinity,
+	IsPrecompileResult, LinearCostPrecompile, Log, Precompile, PrecompileFailure, PrecompileHandle,
+	PrecompileOutput, PrecompileResult, PrecompileSet, TransactionValidationError, Vicinity,
 };
 
 pub use self::{
@@ -167,6 +168,9 @@ pub mod pallet {
 
 		/// Gas limit Pov size ratio.
 		type GasLimitPovSizeRatio: Get<u64>;
+
+		/// Define the quick clear limit of storage clearing when a contract suicides. Set to 0 to disable it.
+		type SuicideQuickClearLimit: Get<u32>;
 
 		/// Get the timestamp for the current block.
 		type Timestamp: Time;
@@ -488,38 +492,46 @@ pub mod pallet {
 		GasLimitTooLow,
 		/// Gas limit is too high.
 		GasLimitTooHigh,
-		/// Undefined error.
-		Undefined,
+		/// The chain id is invalid.
+		InvalidChainId,
+		/// the signature is invalid.
+		InvalidSignature,
 		/// EVM reentrancy
 		Reentrancy,
 		/// EIP-3607,
 		TransactionMustComeFromEOA,
+		/// Undefined error.
+		Undefined,
 	}
 
-	impl<T> From<InvalidEvmTransactionError> for Error<T> {
-		fn from(validation_error: InvalidEvmTransactionError) -> Self {
+	impl<T> From<TransactionValidationError> for Error<T> {
+		fn from(validation_error: TransactionValidationError) -> Self {
 			match validation_error {
-				InvalidEvmTransactionError::GasLimitTooLow => Error::<T>::GasLimitTooLow,
-				InvalidEvmTransactionError::GasLimitTooHigh => Error::<T>::GasLimitTooHigh,
-				InvalidEvmTransactionError::GasPriceTooLow => Error::<T>::GasPriceTooLow,
-				InvalidEvmTransactionError::PriorityFeeTooHigh => Error::<T>::GasPriceTooLow,
-				InvalidEvmTransactionError::BalanceTooLow => Error::<T>::BalanceLow,
-				InvalidEvmTransactionError::TxNonceTooLow => Error::<T>::InvalidNonce,
-				InvalidEvmTransactionError::TxNonceTooHigh => Error::<T>::InvalidNonce,
-				InvalidEvmTransactionError::InvalidPaymentInput => Error::<T>::GasPriceTooLow,
-				_ => Error::<T>::Undefined,
+				TransactionValidationError::GasLimitTooLow => Error::<T>::GasLimitTooLow,
+				TransactionValidationError::GasLimitTooHigh => Error::<T>::GasLimitTooHigh,
+				TransactionValidationError::BalanceTooLow => Error::<T>::BalanceLow,
+				TransactionValidationError::TxNonceTooLow => Error::<T>::InvalidNonce,
+				TransactionValidationError::TxNonceTooHigh => Error::<T>::InvalidNonce,
+				TransactionValidationError::GasPriceTooLow => Error::<T>::GasPriceTooLow,
+				TransactionValidationError::PriorityFeeTooHigh => Error::<T>::GasPriceTooLow,
+				TransactionValidationError::InvalidFeeInput => Error::<T>::GasPriceTooLow,
+				TransactionValidationError::InvalidChainId => Error::<T>::InvalidChainId,
+				TransactionValidationError::InvalidSignature => Error::<T>::InvalidSignature,
+				TransactionValidationError::UnknownError => Error::<T>::Undefined,
 			}
 		}
 	}
 
 	#[pallet::genesis_config]
-	#[cfg_attr(feature = "std", derive(Default))]
-	pub struct GenesisConfig {
-		pub accounts: std::collections::BTreeMap<H160, GenesisAccount>,
+	#[derive(frame_support::DefaultNoBound)]
+	pub struct GenesisConfig<T> {
+		pub accounts: BTreeMap<H160, GenesisAccount>,
+		#[serde(skip)]
+		pub _marker: PhantomData<T>,
 	}
 
 	#[pallet::genesis_build]
-	impl<T: Config> GenesisBuild<T> for GenesisConfig
+	impl<T: Config> BuildGenesisConfig for GenesisConfig<T>
 	where
 		U256: UniqueSaturatedInto<BalanceOf<T>>,
 	{
@@ -538,7 +550,10 @@ pub mod pallet {
 					frame_system::Pallet::<T>::inc_account_nonce(&account_id);
 				}
 
-				T::Currency::deposit_creating(&account_id, account.balance.unique_saturated_into());
+				let _ = T::Currency::deposit_creating(
+					&account_id,
+					account.balance.unique_saturated_into(),
+				);
 
 				Pallet::<T>::create_account(*address, account.code.clone());
 
@@ -559,6 +574,9 @@ pub mod pallet {
 	#[pallet::storage]
 	pub type AccountStorages<T: Config> =
 		StorageDoubleMap<_, Blake2_128Concat, H160, Blake2_128Concat, H256, H256, ValueQuery>;
+
+	#[pallet::storage]
+	pub type Suicided<T: Config> = StorageMap<_, Blake2_128Concat, H160, (), OptionQuery>;
 }
 
 /// Type alias for currency balance.
@@ -734,7 +752,7 @@ pub trait BlockHashMapping {
 pub struct SubstrateBlockHashMapping<T>(sp_std::marker::PhantomData<T>);
 impl<T: Config> BlockHashMapping for SubstrateBlockHashMapping<T> {
 	fn block_hash(number: u32) -> H256 {
-		let number = T::BlockNumber::from(number);
+		let number = <NumberFor<T::Block>>::from(number);
 		H256::from_slice(frame_system::Pallet::<T>::block_hash(number).as_ref())
 	}
 }
@@ -791,18 +809,44 @@ impl<T: Config> Pallet<T> {
 	/// Remove an account.
 	pub fn remove_account(address: &H160) {
 		if <AccountCodes<T>>::contains_key(address) {
+			// Remember to call `dec_sufficients` when clearing Suicided.
+			<Suicided<T>>::insert(address, ());
+
+			// In theory, we can always have pre-EIP161 contracts, so we
+			// make sure the account nonce is at least one.
 			let account_id = T::AddressMapping::into_account_id(*address);
-			let _ = frame_system::Pallet::<T>::dec_sufficients(&account_id);
+			frame_system::Pallet::<T>::inc_account_nonce(&account_id);
 		}
 
 		<AccountCodes<T>>::remove(address);
 		<AccountCodesMetadata<T>>::remove(address);
-		#[allow(deprecated)]
-		let _ = <AccountStorages<T>>::remove_prefix(address, None);
+
+		if T::SuicideQuickClearLimit::get() > 0 {
+			#[allow(deprecated)]
+			let res = <AccountStorages<T>>::remove_prefix(address, Some(T::SuicideQuickClearLimit::get()));
+
+			match res {
+				KillStorageResult::AllRemoved(_) => {
+					<Suicided<T>>::remove(address);
+
+					let account_id = T::AddressMapping::into_account_id(*address);
+					let _ = frame_system::Pallet::<T>::dec_sufficients(&account_id);
+				}
+				KillStorageResult::SomeRemaining(_) => (),
+			}
+		}
 	}
 
 	/// Create an account.
 	pub fn create_account(address: H160, code: Vec<u8>) {
+		if <Suicided<T>>::contains_key(address) {
+			// This branch should never trigger, because when Suicided
+			// contains an address, then its nonce will be at least one,
+			// which causes CreateCollision error in EVM, but we add it
+			// here for safeguard.
+			return;
+		}
+
 		if code.is_empty() {
 			return;
 		}

@@ -24,9 +24,13 @@ use sp_runtime::traits::Block as BlockT;
 // Frontier
 use fc_rpc_core::types::*;
 
-use crate::eth::{Eth, EthConfig};
+use crate::eth::Eth;
 
-impl<B: BlockT, C, P, CT, BE, A: ChainApi, EC: EthConfig<B, C>> Eth<B, C, P, CT, BE, A, EC> {
+impl<B, C, P, CT, BE, A, CIDP, EC> Eth<B, C, P, CT, BE, A, CIDP, EC>
+where
+	B: BlockT,
+	A: ChainApi<Block = B>,
+{
 	pub fn is_mining(&self) -> RpcResult<bool> {
 		Ok(self.is_authority)
 	}

@@ -16,7 +16,7 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![deny(unused_crate_dependencies)]
+#![warn(unused_crate_dependencies)]
 
 extern crate alloc;
 
@@ -28,14 +28,18 @@ mod tests;
 
 use alloc::format;
 use core::marker::PhantomData;
+
+use scale_codec::{Decode, DecodeLimit};
+// Substrate
+use frame_support::{
+	dispatch::{DispatchClass, GetDispatchInfo, Pays, PostDispatchInfo},
+	traits::{ConstU32, Get},
+};
+use sp_runtime::traits::Dispatchable;
+// Frontier
 use fp_evm::{
 	ExitError, ExitSucceed, Precompile, PrecompileFailure, PrecompileHandle, PrecompileOutput,
 	PrecompileResult,
-};
-use frame_support::{
-	codec::{Decode, DecodeLimit as _},
-	dispatch::{DispatchClass, Dispatchable, GetDispatchInfo, Pays, PostDispatchInfo},
-	traits::{ConstU32, Get},
 };
 use pallet_evm::{AddressMapping, GasWeightMapping};
 
@@ -81,8 +85,11 @@ where
 			return Err(err);
 		}
 
-		handle
-			.record_external_cost(Some(info.weight.ref_time()), Some(info.weight.proof_size()))?;
+		handle.record_external_cost(
+			Some(info.weight.ref_time()),
+			Some(info.weight.proof_size()),
+			None,
+		)?;
 
 		match call.dispatch(Some(origin).into()) {
 			Ok(post_info) => {

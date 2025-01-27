@@ -4,16 +4,17 @@
 
 use super::*;
 use crate as validator_set;
-use frame_support::{parameter_types, traits::GenesisBuild, BasicExternalities};
+use frame_support::{derive_impl, parameter_types};
 use frame_system::EnsureRoot;
 use pallet_session::*;
 use sp_core::{crypto::key_types::DUMMY, H256};
 use sp_runtime::{
 	impl_opaque_keys,
-	testing::{Header, UintAuthorityId},
+	testing::UintAuthorityId,
 	traits::{BlakeTwo256, IdentityLookup, OpaqueKeys},
-	KeyTypeId, RuntimeAppPublic,
+	BuildStorage, KeyTypeId, RuntimeAppPublic,
 };
+use sp_state_machine::BasicExternalities;
 use std::cell::RefCell;
 
 impl_opaque_keys! {
@@ -31,7 +32,7 @@ impl From<UintAuthorityId> for MockSessionKeys {
 pub const KEY_ID_A: KeyTypeId = KeyTypeId([4; 4]);
 pub const KEY_ID_B: KeyTypeId = KeyTypeId([9; 4]);
 
-#[derive(Debug, Clone, scale_codec::Encode, scale_codec::Decode, PartialEq, Eq)]
+#[derive(Debug, Clone, codec::Encode, codec::Decode, PartialEq, Eq)]
 pub struct PreUpgradeMockSessionKeys {
 	pub a: [u8; 32],
 	pub b: [u8; 64],
@@ -53,15 +54,10 @@ impl OpaqueKeys for PreUpgradeMockSessionKeys {
 	}
 }
 
-type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
 
 frame_support::construct_runtime!(
-	pub enum Test where
-		Block = Block,
-		NodeBlock = Block,
-		UncheckedExtrinsic = UncheckedExtrinsic,
-	{
+	pub struct Test {
 		System: frame_system,
 		ValidatorSet: validator_set,
 		Session: pallet_session,
@@ -123,7 +119,7 @@ pub fn authorities() -> Vec<UintAuthorityId> {
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-	let mut t = frame_system::GenesisConfig::default().build_storage::<Test>().unwrap();
+	let mut t = frame_system::GenesisConfig::<Test>::default().build_storage().unwrap();
 	let keys: Vec<_> = NEXT_VALIDATORS
 		.with(|l| l.borrow().iter().cloned().map(|i| (i, i, UintAuthorityId(i).into())).collect());
 	BasicExternalities::execute_with_storage(&mut t, || {
@@ -147,23 +143,23 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 parameter_types! {
 	pub const BlockHashCount: u64 = 250;
 	pub BlockWeights: frame_system::limits::BlockWeights =
-		frame_system::limits::BlockWeights::simple_max(frame_support::weights::Weight::from_ref_time(1024));
+		frame_system::limits::BlockWeights::simple_max(frame_support::weights::Weight::from_parts(1024, 0));
 }
 
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig as frame_system::DefaultConfig)]
 impl frame_system::Config for Test {
 	type BaseCallFilter = frame_support::traits::Everything;
 	type BlockWeights = ();
 	type BlockLength = ();
 	type DbWeight = ();
 	type RuntimeOrigin = RuntimeOrigin;
-	type Index = u64;
-	type BlockNumber = u64;
+	type Nonce = u64;
 	type RuntimeCall = RuntimeCall;
 	type Hash = H256;
 	type Hashing = BlakeTwo256;
 	type AccountId = u64;
 	type Lookup = IdentityLookup<Self::AccountId>;
-	type Header = Header;
+	type Block = Block;
 	type RuntimeEvent = RuntimeEvent;
 	type BlockHashCount = BlockHashCount;
 	type Version = ();
@@ -185,6 +181,7 @@ impl validator_set::Config for Test {
 	type AddRemoveOrigin = EnsureRoot<Self::AccountId>;
 	type RuntimeEvent = RuntimeEvent;
 	type MinAuthorities = MinAuthorities;
+	type WeightInfo = ();
 }
 
 impl pallet_session::Config for Test {

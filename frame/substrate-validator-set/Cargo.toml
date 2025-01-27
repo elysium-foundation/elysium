@@ -1,32 +1,34 @@
 [package]
 name = 'substrate-validator-set'
-version = '0.9.30'
+version = '1.1.0'
 authors = ['Gautam Dhameja <quasijatt@outlook.com>']
-edition = { workspace = true }
+edition = '2021'
 license = 'Apache-2.0'
-repository = { workspace = true }
+repository = 'https://github.com/gautamdhameja/substrate-validator-set'
+
 
 [dev-dependencies]
-serde = { workspace = true }
+serde = { workspace = true, features = ['derive'] }
+sp-state-machine = { workspace = true }
 
 [dependencies]
-sp-core = { workspace = true }
-sp-io = { workspace = true }
-sp-runtime = { workspace = true }
-sp-std = { workspace = true }
+sp-core = { workspace = true, default-features = false }
+sp-io = { workspace = true, default-features = false }
+sp-runtime = { workspace = true, default-features = false }
+sp-std = { workspace = true, default-features = false }
+sp-staking = { workspace = true, default-features = false }
 log = { workspace = true }
-scale-codec = { package = "parity-scale-codec", workspace = true }
-scale-info = { workspace = true }
-syn = { workspace = true }
-sp-staking = { workspace = true }
-frame-benchmarking = { workspace = true, optional = true }
-frame-support = { workspace = true }
-frame-system = { workspace = true }
-pallet-session = { workspace = true, features = ['historical'] }
+scale-codec = { workspace = true, package = 'parity-scale-codec', features = ['derive'] }
+frame-benchmarking = { workspace = true, optional = true, default-features = false }
+frame-support = { workspace = true, default-features = false }
+frame-system = { workspace = true, default-features = false }
+pallet-session = { workspace = true, default-features = false, features = ['historical'] }
+scale-info = { workspace = true, default-features = false, features = ['derive'] }
+sp-weights = { workspace = true, default-features = false }
 
 [features]
 default = ['std']
-runtime-benchmarks = ['frame-benchmarking']
+runtime-benchmarks = ['frame-benchmarking/runtime-benchmarks']
 std = [
     'scale-codec/std',
     'frame-benchmarking/std',
@@ -37,6 +39,6 @@ std = [
     'sp-io/std',
     'sp-std/std',
     'sp-runtime/std',
-    'pallet-session/std'
+    'pallet-session/std',
 ]
 try-runtime = ['frame-support/try-runtime']

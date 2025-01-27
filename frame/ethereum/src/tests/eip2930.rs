@@ -19,7 +19,7 @@
 
 use super::*;
 use evm::{ExitReason, ExitRevert, ExitSucceed};
-use fp_ethereum::ValidatedTransaction;
+use fp_ethereum::{TransactionData, ValidatedTransaction};
 use frame_support::{
 	dispatch::{DispatchClass, GetDispatchInfo},
 	weights::Weight,
@@ -65,9 +65,8 @@ fn transaction_without_enough_gas_should_not_work() {
 
 	ext.execute_with(|| {
 		let mut transaction = eip2930_erc20_creation_transaction(alice);
-		match &mut transaction {
-			Transaction::EIP2930(t) => t.gas_price = U256::from(11_000_000),
-			_ => {}
+		if let Transaction::EIP2930(t) = &mut transaction {
+			t.gas_price = U256::from(11_000_000);
 		}
 
 		let call = crate::Call::<Test>::transact { transaction };
@@ -188,7 +187,7 @@ fn transaction_with_invalid_chain_id_should_fail_in_block() {
 		assert_err!(
 			extrinsic.apply::<Test>(&dispatch_info, 0),
 			TransactionValidityError::Invalid(InvalidTransaction::Custom(
-				fp_ethereum::TransactionValidationError::InvalidChainId as u8,
+				fp_evm::TransactionValidationError::InvalidChainId as u8,
 			))
 		);
 	});
@@ -509,6 +508,41 @@ fn proof_size_weight_limit_validation_works() {
 		// Execute
 		assert!(
 			Ethereum::transact(RawOrigin::EthereumTransaction(alice.address).into(), tx,).is_err()
+		);
+	});
+}
+
+#[test]
+fn proof_size_base_cost_should_keep_the_same_in_execution_and_estimate() {
+	let (pairs, mut ext) = new_test_ext(1);
+	let alice = &pairs[0];
+
+	ext.execute_with(|| {
+		let raw_tx = EIP2930UnsignedTransaction {
+			nonce: U256::zero(),
+			gas_price: U256::zero(),
+			gas_limit: U256::from(21_000),
+			action: ethereum::TransactionAction::Create,
+			value: U256::from(100),
+			input: vec![9; 100],
+		};
+
+		let tx_data: TransactionData = (&raw_tx.sign(&alice.private_key, Some(100))).into();
+		let estimate_tx_data = TransactionData::new(
+			raw_tx.action,
+			raw_tx.input,
+			raw_tx.nonce,
+			raw_tx.gas_limit,
+			Some(raw_tx.gas_price),
+			None,
+			None,
+			raw_tx.value,
+			Some(100),
+			vec![],
+		);
+		assert_eq!(
+			estimate_tx_data.proof_size_base_cost(),
+			tx_data.proof_size_base_cost()
 		);
 	});
 }

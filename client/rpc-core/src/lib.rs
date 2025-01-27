@@ -16,20 +16,25 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![deny(unused_crate_dependencies)]
+#![allow(clippy::explicit_counter_loop)]
+#![warn(unused_crate_dependencies)]
 
 pub mod types;
 
+mod debug;
 mod eth;
 mod eth_pubsub;
 mod net;
+#[cfg(feature = "txpool")]
 mod txpool;
 mod web3;
 
+#[cfg(feature = "txpool")]
+pub use self::txpool::TxPoolApiServer;
 pub use self::{
+	debug::DebugApiServer,
 	eth::{EthApiServer, EthFilterApiServer},
 	eth_pubsub::EthPubSubApiServer,
 	net::NetApiServer,
-	txpool::TxPoolApiServer,
 	web3::Web3ApiServer,
 };

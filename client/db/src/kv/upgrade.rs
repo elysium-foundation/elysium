@@ -321,27 +321,26 @@ pub(crate) fn migrate_1_to_2_parity_db<Block: BlockT, C: HeaderBackend<Block>>(
 
 #[cfg(test)]
 mod tests {
-	use futures::executor;
-	use sc_block_builder::BlockBuilderProvider;
-	use sp_consensus::BlockOrigin;
-	use substrate_test_runtime_client::{
-		prelude::*, DefaultTestClientBuilderExt, TestClientBuilder,
-	};
-
 	use std::{
 		io::{Read, Write},
 		sync::Arc,
 	};
 
-	use crate::kv::DatabaseSettings;
+	use futures::executor;
 	use scale_codec::Encode;
+	use tempfile::tempdir;
+	// Substrate
+	use sc_block_builder::BlockBuilderBuilder;
 	use sp_blockchain::HeaderBackend;
+	use sp_consensus::BlockOrigin;
 	use sp_core::H256;
 	use sp_runtime::{
 		generic::{Block, Header},
-		traits::{BlakeTwo256, Block as BlockT},
+		traits::{BlakeTwo256, Block as BlockT, Header as HeaderT},
 	};
-	use tempfile::tempdir;
+	use substrate_test_runtime_client::{
+		prelude::*, DefaultTestClientBuilderExt, TestClientBuilder,
+	};
 
 	type OpaqueBlock =
 		Block<Header<u64, BlakeTwo256>, substrate_test_runtime_client::runtime::Extrinsic>;
@@ -356,7 +355,7 @@ mod tests {
 	#[cfg_attr(not(feature = "rocksdb"), ignore)]
 	#[test]
 	fn upgrade_1_to_2_works() {
-		let settings: Vec<DatabaseSettings> = vec![
+		let settings: Vec<crate::kv::DatabaseSettings> = vec![
 			// Rocks db
 			#[cfg(feature = "rocksdb")]
 			crate::kv::DatabaseSettings {
@@ -387,10 +386,16 @@ mod tests {
 			let mut client = Arc::new(client);
 
 			// Genesis block
-			let mut builder = client.new_block(Default::default()).unwrap();
+			let chain_info = client.chain_info();
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(chain_info.best_hash)
+				.with_parent_block_number(chain_info.best_number)
+				.build()
+				.unwrap();
 			builder.push_storage_change(vec![1], None).unwrap();
 			let block = builder.build().unwrap().block;
 			let mut previous_canon_block_hash = block.header.hash();
+			let mut previous_canon_block_number = *block.header.number();
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
 
 			let path = setting.source.path().unwrap();
@@ -411,16 +416,21 @@ mod tests {
 					// Create two branches, and map the orphan one.
 					// Keep track of the canon hash to later verify the migration replaced it.
 					// A1
-					let mut builder = client
-						.new_block_at(previous_canon_block_hash, Default::default(), false)
+					let mut builder = BlockBuilderBuilder::new(&*client)
+						.on_parent_block(previous_canon_block_hash)
+						.with_parent_block_number(previous_canon_block_number)
+						.build()
 						.unwrap();
 					builder.push_storage_change(vec![1], None).unwrap();
 					let block = builder.build().unwrap().block;
 					let next_canon_block_hash = block.header.hash();
+					let next_canon_block_number = *block.header.number();
 					executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
 					// A2
-					let mut builder = client
-						.new_block_at(previous_canon_block_hash, Default::default(), false)
+					let mut builder = BlockBuilderBuilder::new(&*client)
+						.on_parent_block(previous_canon_block_hash)
+						.with_parent_block_number(previous_canon_block_number)
+						.build()
 						.unwrap();
 					builder.push_storage_change(vec![2], None).unwrap();
 					let block = builder.build().unwrap().block;
@@ -441,9 +451,9 @@ mod tests {
 					// happened in case of fork or equivocation.
 					let eth_tx_hash = H256::random();
 					let mut metadata = vec![];
-					for hash in vec![next_canon_block_hash, orphan_block_hash].iter() {
+					for hash in [next_canon_block_hash, orphan_block_hash] {
 						metadata.push(crate::kv::TransactionMetadata::<OpaqueBlock> {
-							block_hash: *hash,
+							substrate_block_hash: hash,
 							ethereum_block_hash: ethhash,
 							ethereum_index: 0u32,
 						});
@@ -455,12 +465,13 @@ mod tests {
 					);
 					transaction_hashes.push(eth_tx_hash);
 					previous_canon_block_hash = next_canon_block_hash;
+					previous_canon_block_number = next_canon_block_number;
 				}
 				let _ = backend.mapping().db.commit(transaction);
 			}
 
 			// Writes version 1 to file.
-			let _ = std::fs::create_dir_all(&path).expect("db path created");
+			std::fs::create_dir_all(path).expect("db path created");
 			let mut version_path = path.to_owned();
 			version_path.push("db_version");
 			let mut version_file =
@@ -470,7 +481,7 @@ mod tests {
 				.expect("write version 1");
 
 			// Upgrade database from version 1 to 2
-			let _ = super::upgrade_db::<OpaqueBlock, _>(client.clone(), &path, &setting.source);
+			let _ = super::upgrade_db::<OpaqueBlock, _>(client.clone(), path, &setting.source);
 
 			// Check data after migration
 			let backend = open_frontier_backend::<OpaqueBlock, _>(client, &setting)
@@ -493,11 +504,11 @@ mod tests {
 					.unwrap();
 				assert!(mapped_transaction
 					.into_iter()
-					.any(|tx| tx.block_hash == *canon_substrate_block_hash));
+					.any(|tx| tx.substrate_block_hash == *canon_substrate_block_hash));
 			}
 
 			// Upgrade db version file
-			assert_eq!(super::current_version(&path).expect("version"), 2u32);
+			assert_eq!(super::current_version(path).expect("version"), 2u32);
 		}
 	}
 
@@ -519,10 +530,10 @@ mod tests {
 			},
 		};
 		let path = setting.source.path().unwrap();
-		let _ = super::upgrade_db::<OpaqueBlock, _>(client.clone(), &path, &setting.source);
+		let _ = super::upgrade_db::<OpaqueBlock, _>(client, path, &setting.source);
 
 		let mut file =
-			std::fs::File::open(crate::kv::upgrade::version_file_path(&path)).expect("file exist");
+			std::fs::File::open(crate::kv::upgrade::version_file_path(path)).expect("file exist");
 
 		let mut s = String::new();
 		file.read_to_string(&mut s).expect("read file contents");

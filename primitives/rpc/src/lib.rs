@@ -17,7 +17,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::too_many_arguments)]
-#![deny(unused_crate_dependencies)]
+#![warn(unused_crate_dependencies)]
 
 use ethereum::Log;
 use ethereum_types::Bloom;
@@ -25,7 +25,10 @@ use scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 // Substrate
 use sp_core::{H160, H256, U256};
-use sp_runtime::{traits::Block as BlockT, Permill, RuntimeDebug};
+use sp_runtime::{
+	traits::{Block as BlockT, HashingFor},
+	Permill, RuntimeDebug,
+};
 use sp_state_machine::OverlayedChanges;
 use sp_std::vec::Vec;
 
@@ -40,18 +43,12 @@ pub struct TransactionStatus {
 	pub logs_bloom: Bloom,
 }
 
-#[derive(Eq, PartialEq, Clone, Encode, Decode, sp_runtime::RuntimeDebug)]
-pub struct TxPoolResponse {
-	pub ready: Vec<ethereum::TransactionV2>,
-	pub future: Vec<ethereum::TransactionV2>,
-}
-
 pub trait RuntimeStorageOverride<B: BlockT, C>: Send + Sync {
 	fn is_enabled() -> bool;
 
 	fn set_overlayed_changes(
 		client: &C,
-		overlayed_changes: &mut OverlayedChanges,
+		overlayed_changes: &mut OverlayedChanges<HashingFor<B>>,
 		block: B::Hash,
 		version: u32,
 		address: H160,
@@ -69,7 +66,7 @@ impl<B: BlockT, C> RuntimeStorageOverride<B, C> for () {
 
 	fn set_overlayed_changes(
 		_client: &C,
-		_overlayed_changes: &mut OverlayedChanges,
+		_overlayed_changes: &mut OverlayedChanges<HashingFor<B>>,
 		_block: B::Hash,
 		_version: u32,
 		_address: H160,
@@ -252,10 +249,13 @@ sp_api::decl_runtime_apis! {
 	}
 }
 
+/// Fallback transaction converter when the `ConvertTransactionRuntimeApi` is not available. For almost all
+/// non-legacy cases, you can instantiate this type as `NoTransactionConverter`.
 pub trait ConvertTransaction<E> {
 	fn convert_transaction(&self, transaction: ethereum::TransactionV2) -> E;
 }
 
+/// No fallback transaction converter is available.
 // `NoTransactionConverter` is a non-instantiable type (an enum with no variants),
 // so we are guaranteed at compile time that `NoTransactionConverter` can never be instantiated.
 pub enum NoTransactionConverter {}
@@ -263,6 +263,6 @@ impl<E> ConvertTransaction<E> for NoTransactionConverter {
 	// `convert_transaction` is a method taking `&self` as a parameter, so it can only be called via an instance of type Self,
 	// so we are guaranteed at compile time that this method can never be called.
 	fn convert_transaction(&self, _transaction: ethereum::TransactionV2) -> E {
-		unreachable!()
+		match *self {}
 	}
 }

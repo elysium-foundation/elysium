@@ -8,7 +8,7 @@
   "properties": {
     "ss58Format": 42,
     "tokenDecimals": 18,
-    "tokenSymbol": "LAVA"
+    "tokenSymbol": "ELY"
   },
   "consensusEngine": null,
   "codeSubstitutes": {},
