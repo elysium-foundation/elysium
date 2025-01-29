@@ -7,7 +7,7 @@
 
 set -e
 
-BINARY="./target/release/elysium"
+BINARY="./target/release/frontier-template-node"
 
 function choose_and_bench {
     readarray -t options < <(${BINARY} benchmark pallet --list | sed 1d)

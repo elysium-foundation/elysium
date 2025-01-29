@@ -24,7 +24,7 @@
 //! EXECUTION: Some(Wasm), WASM-EXECUTION: Compiled, CHAIN: Some("dev"), DB CACHE: 1024
 
 // Executed Command:
-// ./target/release/elysium
+// ./target/release/frontier-template-node
 // benchmark
 // pallet
 // --chain=dev
@@ -35,7 +35,7 @@
 // --execution=wasm
 // --wasm-execution=compiled
 // --output=weights.rs
-// --header=HEADER-APACHE2
+// --header=./.maintain/HEADER-APACHE2
 // --template=./.maintain/frame-weight-template.hbs
 
 #![cfg_attr(rustfmt, rustfmt_skip)]

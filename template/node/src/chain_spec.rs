@@ -1,29 +1,28 @@
 use std::{collections::BTreeMap, str::FromStr};
-// Substrate
+
 use sc_chain_spec::{ChainType, Properties};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
-use sp_core::{sr25519, Pair, Public, H160, U256, OpaquePeerId};
 #[allow(unused_imports)]
 use sp_core::ecdsa;
+use sp_core::{sr25519, Pair, Public, H160, U256, OpaquePeerId};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 // Frontier
 use elysium_runtime::{
-    AccountId, Balance, RuntimeGenesisConfig, SS58Prefix, Signature,
+    AccountId, Balance, SS58Prefix, Signature,
     WASM_BINARY, ValidatorSetConfig, SessionConfig, NodeAuthorizationConfig,
-    CHAIN_ID, currency::LAVA, opaque::SessionKeys, SystemConfig,
+    CHAIN_ID, currency::LAVA, opaque::SessionKeys,
 };
-const INITIAL_BALANCE: Balance = 2000 * LAVA;
+pub type ChainSpec = sc_service::GenericChainSpec;
 fn session_keys(aura: AuraId, grandpa: GrandpaId) -> SessionKeys {
     SessionKeys { aura, grandpa }
 }
-pub type ChainSpec = sc_service::GenericChainSpec<RuntimeGenesisConfig>;
 pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
     TPublic::Pair::from_string(&format!("//{}", seed), None)
         .expect("static values are valid; qed")
         .public()
 }
-
+#[allow(dead_code)]
 type AccountPublic = <Signature as Verify>::Signer;
 pub fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountId
 where
@@ -38,6 +37,7 @@ pub fn authority_keys_from_seed(s: &str) -> (AccountId, AuraId, GrandpaId) {
         get_from_seed::<GrandpaId>(s)
     )
 }
+
 fn properties() -> Properties {
     let mut properties = Properties::new();
     properties.insert("tokenSymbol".into(), "ELY".into());
@@ -45,21 +45,25 @@ fn properties() -> Properties {
     properties.insert("ss58Format".into(), SS58Prefix::get().into());
     properties
 }
+const UNITS: Balance = 2000 * LAVA;
 
-pub fn development_config(_enable_manual_seal: bool) -> ChainSpec {
+pub fn development_config(enable_manual_seal: bool) -> ChainSpec {
     ChainSpec::builder(WASM_BINARY.expect("WASM not available"), Default::default())
         .with_name("Development")
         .with_id("dev")
         .with_chain_type(ChainType::Development)
         .with_properties(properties())
         .with_genesis_config_patch(testnet_genesis(
-            get_account_id_from_seed::<sr25519::Public>("Alice"),
-            vec![
-                get_account_id_from_seed::<sr25519::Public>("Alice"),
-                get_account_id_from_seed::<sr25519::Public>("Bob"),
+            get_account_id_from_seed::<sr25519::Public>("Alice"), // Sudo account Alice
+            vec![ // Pre-funded accounts
+                  get_account_id_from_seed::<sr25519::Public>("Alice"),
+                  get_account_id_from_seed::<sr25519::Public>("Bob"),
             ],
-            vec![authority_keys_from_seed("Alice")],
-            CHAIN_ID,
+            vec![ // Initial PoA authorities
+                  authority_keys_from_seed("Alice")
+            ],
+            CHAIN_ID, // Chain ID
+            enable_manual_seal,
         ))
         .build()
 }
@@ -71,13 +75,16 @@ pub fn local_testnet_config() -> ChainSpec {
         .with_chain_type(ChainType::Local)
         .with_properties(properties())
         .with_genesis_config_patch(testnet_genesis(
-            get_account_id_from_seed::<sr25519::Public>("Alice"),
-            vec![
-                get_account_id_from_seed::<sr25519::Public>("Alice"),
-                get_account_id_from_seed::<sr25519::Public>("Bob"),
+            get_account_id_from_seed::<sr25519::Public>("Alice"), // Sudo account Alice
+            vec![ // Pre-funded accounts
+                  get_account_id_from_seed::<sr25519::Public>("Alice"),
+                  get_account_id_from_seed::<sr25519::Public>("Bob"),
             ],
-            vec![authority_keys_from_seed("Alice")],
-            CHAIN_ID,
+            vec![ // Initial PoA authorities
+                  authority_keys_from_seed("Alice")
+            ],
+            CHAIN_ID, // Chain ID
+            false,
         ))
         .build()
 }
@@ -88,6 +95,7 @@ fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     initial_authorities: Vec<(AccountId, AuraId, GrandpaId)>,
     chain_id: u64,
+    _enable_manual_seal: bool,
 ) -> serde_json::Value {
     let evm_accounts = {
         let mut map = BTreeMap::new();
@@ -139,14 +147,14 @@ fn testnet_genesis(
 			"balances": endowed_accounts
 				.iter()
 				.cloned()
-				.map(|k| (k, INITIAL_BALANCE))
+				.map(|k| (k, UNITS))
 				.collect::<Vec<_>>()
 		},
-		"aura": { "authorities": [] },
-		"grandpa": { "authorities": [] },
-		"evmChainId": { "chainId": chain_id },
+		"aura": { "authorities": initial_authorities.iter().map(|x| (x.1.clone())).collect::<Vec<_>>() },
+		"grandpa": { "authorities": initial_authorities.iter().map(|x| (x.2.clone(), 1)).collect::<Vec<_>>() },
+        "evmChainId": { "chainId": chain_id },
 		"evm": { "accounts": evm_accounts },
-		"nodeAuthorization": NodeAuthorizationConfig {
+        "nodeAuthorization": NodeAuthorizationConfig {
 			nodes: vec![
 				(
 					OpaquePeerId(bs58::decode("12D3KooWBmAwcd4PJNJvfV89HwE48nwkRmAgo8Vy3uQEyNNHBox2").into_vec().unwrap()),
@@ -158,16 +166,13 @@ fn testnet_genesis(
 				)
 			],
 		},
-        "validatorSet": ValidatorSetConfig {
+         "validatorSet": ValidatorSetConfig {
 			initial_validators: initial_authorities.iter().map(|x| x.0.clone()).collect::<Vec<_>>(),
 		},
-        "session": SessionConfig {
+         "session": SessionConfig {
 			keys: initial_authorities.iter().map(|x| {
 				(x.0.clone(), x.0.clone(), session_keys(x.1.clone(), x.2.clone()))
 			}).collect::<Vec<_>>(),
-		},
-        // "session": SystemConfig {
-		// 	code: WASM_BINARY,
-		// },
+		}
 	})
 }

@@ -26,13 +26,14 @@ use sp_runtime::{
     },
     transaction_validity::{
         TransactionSource, TransactionValidity, TransactionValidityError}, MultiSignature,
-    ApplyExtrinsicResult, ConsensusEngineId, Perbill, Permill, Perquintill, FixedPointNumber,
+    ApplyExtrinsicResult, ConsensusEngineId, Perbill, Permill, Perquintill, ExtrinsicInclusionMode, FixedPointNumber,
 };
 use sp_std::{marker::PhantomData, prelude::*};
 use sp_version::RuntimeVersion;
 #[cfg(feature = "with-rocksdb-weights")]
 use frame_support::weights::constants::RocksDbWeight as RuntimeDbWeight;
-use pallet_transaction_payment::{CurrencyAdapter, TargetedFeeAdjustment, Multiplier};
+use pallet_transaction_payment::{CurrencyAdapter, TargetedFeeAdjustment, Multiplier, FungibleAdapter};
+use sp_genesis_builder::PresetId;
 use fp_evm::weight_per_gas;
 use fp_rpc::TransactionStatus;
 use pallet_ethereum::{
@@ -45,7 +46,8 @@ use pallet_evm::{
 use frame_system::EnsureRoot;
 use smallvec::smallvec;
 pub use frame_support::{
-    genesis_builder_helper::{build_config, create_default_config},
+    derive_impl,
+    genesis_builder_helper::{build_state, get_preset},
     parameter_types,
     traits::{ConstBool, ConstU32, ConstU8, FindAuthor, OnFinalize},
     weights::{
@@ -188,6 +190,8 @@ parameter_types! {
 		::max_with_normal_ratio(MAXIMUM_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
 	pub const SS58Prefix: u8 = 42;
 }
+
+#[derive_impl(frame_system::config_preludes::SolochainDefaultConfig as frame_system::DefaultConfig)]
 impl frame_system::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type BaseCallFilter = frame_support::traits::Everything;
@@ -228,6 +232,7 @@ impl pallet_aura::Config for Runtime {
     type MaxAuthorities = MaxAuthorities;
     type DisabledValidators = ();
     type AllowMultipleBlocksPerSlot = ConstBool<false>;
+    type SlotDuration = pallet_aura::MinimumPeriodTimesTwo<Runtime>;
 }
 
 // ==============================
@@ -384,7 +389,7 @@ impl<F: FindAuthor<u32>> FindAuthor<H160> for FindAuthorTruncated<F> {
         I: 'a + IntoIterator<Item=(ConsensusEngineId, &'a [u8])>,
     {
         if let Some(author_index) = F::find_author(digests) {
-            let authority_id = Aura::authorities()[author_index as usize].clone();
+            let authority_id = pallet_aura::Authorities::<Runtime>::get()[author_index as usize].clone();
             return Some(H160::from_slice(&authority_id.to_raw_vec()[4..24]));
         }
         None
@@ -593,51 +598,100 @@ impl pallet_multisig::Config for Runtime {
 // Purpose:
 // Properties:
 // ==============================
-frame_support::construct_runtime!(
-	pub enum Runtime {
-		System: frame_system,
-		Timestamp: pallet_timestamp,
-        RandomnessCollectiveFlip: pallet_insecure_randomness_collective_flip,
 
-		Balances: pallet_balances,
-        ValidatorSet: substrate_validator_set,
-        Session: pallet_session,
-		Aura: pallet_aura,
-		Grandpa: pallet_grandpa,
+#[frame_support::runtime]
+mod runtime {
+    #[runtime::runtime]
+    #[runtime::derive(
+        RuntimeEvent,
+        RuntimeCall,
+        RuntimeError,
+        RuntimeOrigin,
+        RuntimeFreezeReason,
+        RuntimeHoldReason,
+        RuntimeSlashReason,
+        RuntimeLockId,
+        RuntimeTask
+    )]
+    pub struct Runtime;
 
-		TransactionPayment: pallet_transaction_payment,
-		Sudo: pallet_sudo,
-		Ethereum: pallet_ethereum,
-		EVM: pallet_evm,
-		EVMChainId: pallet_evm_chain_id,
-		DynamicFee: pallet_dynamic_fee,
-		BaseFee: pallet_base_fee,
-		HotfixSufficients: pallet_hotfix_sufficients,
-        NodeAuthorization: pallet_node_authorization,
-        Authorship: pallet_authorship,
-        Multisig: pallet_multisig,
-	}
-);
+    #[runtime::pallet_index(0)]
+    pub type System = frame_system;
+
+    #[runtime::pallet_index(1)]
+    pub type Timestamp = pallet_timestamp;
+
+    #[runtime::pallet_index(2)]
+    pub type RandomnessCollectiveFlip = pallet_insecure_randomness_collective_flip;
+
+    #[runtime::pallet_index(3)]
+    pub type Balances = pallet_balances;
+
+    #[runtime::pallet_index(4)]
+    pub type ValidatorSet = substrate_validator_set;
+
+    #[runtime::pallet_index(5)]
+    pub type Session = pallet_session;
+
+    #[runtime::pallet_index(6)]
+    pub type Aura = pallet_aura;
+
+    #[runtime::pallet_index(7)]
+    pub type Grandpa = pallet_grandpa;
+
+    #[runtime::pallet_index(8)]
+    pub type TransactionPayment = pallet_transaction_payment;
+
+    #[runtime::pallet_index(9)]
+    pub type Sudo = pallet_sudo;
+
+    #[runtime::pallet_index(10)]
+    pub type Ethereum = pallet_ethereum;
+
+    #[runtime::pallet_index(11)]
+    pub type EVM = pallet_evm;
+
+    #[runtime::pallet_index(12)]
+    pub type EVMChainId = pallet_evm_chain_id;
+
+    #[runtime::pallet_index(13)]
+    pub type DynamicFee = pallet_dynamic_fee;
+
+    #[runtime::pallet_index(14)]
+    pub type BaseFee = pallet_base_fee;
+
+    #[runtime::pallet_index(15)]
+    pub type HotfixSufficients = pallet_hotfix_sufficients;
+
+    #[runtime::pallet_index(16)]
+    pub type NodeAuthorization = pallet_node_authorization;
+
+    #[runtime::pallet_index(17)]
+    pub type Authorship = pallet_authorship;
+
+    #[runtime::pallet_index(18)]
+    pub type Multisig = pallet_multisig;
+}
 
 #[derive(Clone)]
-pub struct TransactionConverter;
-impl fp_rpc::ConvertTransaction<UncheckedExtrinsic> for TransactionConverter {
-    fn convert_transaction(&self, transaction: pallet_ethereum::Transaction) -> UncheckedExtrinsic {
-        UncheckedExtrinsic::new_unsigned(
-            pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
-        )
+pub struct TransactionConverter<B>(PhantomData<B>);
+
+impl<B> Default for TransactionConverter<B> {
+    fn default() -> Self {
+        Self(PhantomData)
     }
 }
-impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConverter {
+
+impl<B: BlockT> fp_rpc::ConvertTransaction<<B as BlockT>::Extrinsic> for TransactionConverter<B> {
     fn convert_transaction(
         &self,
         transaction: pallet_ethereum::Transaction,
-    ) -> opaque::UncheckedExtrinsic {
+    ) -> <B as BlockT>::Extrinsic {
         let extrinsic = UncheckedExtrinsic::new_unsigned(
             pallet_ethereum::Call::<Runtime>::transact { transaction }.into(),
         );
         let encoded = extrinsic.encode();
-        opaque::UncheckedExtrinsic::decode(&mut &encoded[..])
+        <B as BlockT>::Extrinsic::decode(&mut &encoded[..])
             .expect("Encoded extrinsic is always valid")
     }
 }
@@ -748,7 +802,7 @@ impl_runtime_apis! {
 			Executive::execute_block(block)
 		}
 
-		fn initialize_block(header: &<Block as BlockT>::Header) {
+		fn initialize_block(header: &<Block as BlockT>::Header) -> ExtrinsicInclusionMode {
 			Executive::initialize_block(header)
 		}
 	}
@@ -810,17 +864,21 @@ impl_runtime_apis! {
 		}
 
 		fn authorities() -> Vec<AuraId> {
-			Aura::authorities().to_vec()
+			pallet_aura::Authorities::<Runtime>::get().into_inner()
 		}
 	}
 
 	impl sp_genesis_builder::GenesisBuilder<Block> for Runtime {
-		fn create_default_config() -> Vec<u8> {
-			create_default_config::<RuntimeGenesisConfig>()
+		fn build_state(config: Vec<u8>) -> sp_genesis_builder::Result {
+			build_state::<RuntimeGenesisConfig>(config)
 		}
 
-		fn build_config(config: Vec<u8>) -> sp_genesis_builder::Result {
-			build_config::<RuntimeGenesisConfig>(config)
+		fn get_preset(id: &Option<PresetId>) -> Option<Vec<u8>> {
+			get_preset::<RuntimeGenesisConfig>(id, |_| None)
+		}
+
+		fn preset_names() -> Vec<sp_genesis_builder::PresetId> {
+			vec![]
 		}
 	}
 
@@ -1100,6 +1158,10 @@ impl_runtime_apis! {
 				pallet_ethereum::CurrentBlock::<Runtime>::get(),
 				pallet_ethereum::CurrentTransactionStatuses::<Runtime>::get()
 			)
+		}
+
+        fn initialize_pending_block(header: &<Block as BlockT>::Header) {
+			Executive::initialize_block(header);
 		}
 	}
 
