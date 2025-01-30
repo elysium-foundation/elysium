@@ -1,18 +1,18 @@
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 // This file is part of Frontier.
-//
-// Copyright (c) 2020-2022 Parity Technologies (UK) Ltd.
-//
+
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
+
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
-//
+
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
@@ -20,12 +20,12 @@ use std::{ops::DerefMut, sync::Arc, time::Duration};
 
 use futures::prelude::*;
 // Substrate
-use sc_client_api::backend::{Backend as BackendT, StateBackend, StorageProvider};
-use sp_api::{HeaderT, ProvideRuntimeApi};
+use sc_client_api::backend::{Backend as BackendT, StorageProvider};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Backend, HeaderBackend};
 use sp_consensus::SyncOracle;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, UniqueSaturatedInto};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, UniqueSaturatedInto};
 // Frontier
 use fp_rpc::EthereumRuntimeRPCApi;
 
@@ -63,14 +63,13 @@ pub struct SyncWorker<Block, Backend, Client> {
 	_phantom: std::marker::PhantomData<(Block, Backend, Client)>,
 }
 
-impl<Block: BlockT, Backend, Client> SyncWorker<Block, Backend, Client>
+impl<Block, Backend, Client> SyncWorker<Block, Backend, Client>
 where
 	Block: BlockT<Hash = H256>,
 	Client: ProvideRuntimeApi<Block>,
 	Client::Api: EthereumRuntimeRPCApi<Block>,
 	Client: HeaderBackend<Block> + StorageProvider<Block, Backend> + 'static,
 	Backend: BackendT<Block> + 'static,
-	Backend::State: StateBackend<BlakeTwo256>,
 {
 	/// Spawn the indexing worker. The worker can be given commands via the sender channel.
 	/// Once the buffer is full, attempts to send new messages will wait until a message is read from the channel.
@@ -89,7 +88,7 @@ where
 				match cmd {
 					WorkerCommand::ResumeSync => {
 						// Attempt to resume from last indexed block. If there is no data in the db, sync genesis.
-						match indexer_backend.get_last_indexed_canon_block().await.ok() {
+						match indexer_backend.last_indexed_canon_block().await.ok() {
 							Some(last_block_hash) => {
 								log::debug!(target: "frontier-sql", "Resume from last block {last_block_hash:?}");
 								if let Some(parent_hash) = client
@@ -153,9 +152,7 @@ where
 							indexer_backend.get_first_pending_canon_block().await
 						{
 							log::debug!(target: "frontier-sql", "Indexing pending canonical block {block_hash:?}");
-							indexer_backend
-								.index_block_logs(client.clone(), block_hash)
-								.await;
+							indexer_backend.index_block_logs(block_hash).await;
 						}
 
 						// Fix any missing blocks
@@ -280,7 +277,6 @@ async fn index_block_and_ancestors<Block, Backend, Client>(
 	Client::Api: EthereumRuntimeRPCApi<Block>,
 	Client: HeaderBackend<Block> + StorageProvider<Block, Backend> + 'static,
 	Backend: BackendT<Block> + 'static,
-	Backend::State: StateBackend<BlakeTwo256>,
 {
 	let blockchain_backend = substrate_backend.blockchain();
 	let mut hashes = vec![hash];
@@ -304,7 +300,7 @@ async fn index_block_and_ancestors<Block, Backend, Client>(
 				log::error!(target: "frontier-sql", "{e}");
 			});
 		log::debug!(target: "frontier-sql", "Inserted block metadata");
-		indexer_backend.index_block_logs(client.clone(), hash).await;
+		indexer_backend.index_block_logs(hash).await;
 
 		if let Ok(Some(header)) = blockchain_backend.header(hash) {
 			let parent_hash = header.parent_hash();
@@ -328,7 +324,6 @@ async fn index_canonical_block_and_ancestors<Block, Backend, Client>(
 	Client::Api: EthereumRuntimeRPCApi<Block>,
 	Client: HeaderBackend<Block> + StorageProvider<Block, Backend> + 'static,
 	Backend: BackendT<Block> + 'static,
-	Backend::State: StateBackend<BlakeTwo256>,
 {
 	let blockchain_backend = substrate_backend.blockchain();
 	let mut hashes = vec![hash];
@@ -372,7 +367,7 @@ async fn index_canonical_block_and_ancestors<Block, Backend, Client>(
 				log::error!(target: "frontier-sql", "{e}");
 			});
 		log::debug!(target: "frontier-sql", "Inserted block metadata  {hash:?}");
-		indexer_backend.index_block_logs(client.clone(), hash).await;
+		indexer_backend.index_block_logs(hash).await;
 
 		if let Ok(Some(header)) = blockchain_backend.header(hash) {
 			let parent_hash = header.parent_hash();
@@ -413,7 +408,6 @@ async fn index_missing_blocks<Block, Client, Backend>(
 	Client::Api: EthereumRuntimeRPCApi<Block>,
 	Client: HeaderBackend<Block> + StorageProvider<Block, Backend> + 'static,
 	Backend: BackendT<Block> + 'static,
-	Backend::State: StateBackend<BlakeTwo256>,
 {
 	if let Some(block_number) = indexer_backend.get_first_missing_canon_block().await {
 		log::debug!(target: "frontier-sql", "Missing {block_number:?}");
@@ -451,7 +445,6 @@ async fn index_genesis_block<Block, Client, Backend>(
 	Client::Api: EthereumRuntimeRPCApi<Block>,
 	Client: HeaderBackend<Block> + StorageProvider<Block, Backend> + 'static,
 	Backend: BackendT<Block> + 'static,
-	Backend::State: StateBackend<BlakeTwo256>,
 {
 	log::info!(
 		target: "frontier-sql",
@@ -472,7 +465,6 @@ mod test {
 	use super::*;
 
 	use std::{
-		collections::BTreeMap,
 		path::Path,
 		sync::{Arc, Mutex},
 	};
@@ -482,23 +474,21 @@ mod test {
 	use sqlx::Row;
 	use tempfile::tempdir;
 	// Substrate
-	use sc_block_builder::BlockBuilderProvider;
+	use sc_block_builder::BlockBuilderBuilder;
 	use sc_client_api::{BlockchainEvents, HeaderBackend};
 	use sp_consensus::BlockOrigin;
 	use sp_core::{H160, H256, U256};
 	use sp_io::hashing::twox_128;
 	use sp_runtime::{
-		generic::{Digest, Header},
+		generic::{DigestItem, Header},
 		traits::BlakeTwo256,
 	};
 	use substrate_test_runtime_client::{
 		prelude::*, DefaultTestClientBuilderExt, TestClientBuilder, TestClientBuilderExt,
 	};
 	// Frontier
-	use fc_storage::{OverrideHandle, SchemaV3Override, StorageOverride};
-	use fp_storage::{
-		EthereumStorageSchema, ETHEREUM_CURRENT_RECEIPTS, PALLET_ETHEREUM, PALLET_ETHEREUM_SCHEMA,
-	};
+	use fc_storage::SchemaV3StorageOverride;
+	use fp_storage::{constants::*, EthereumStorageSchema, PALLET_ETHEREUM_SCHEMA};
 
 	type OpaqueBlock = sp_runtime::generic::Block<
 		Header<u64, BlakeTwo256>,
@@ -519,7 +509,7 @@ mod test {
 		[twox_128(module), twox_128(storage)].concat().to_vec()
 	}
 
-	fn ethereum_digest() -> Digest {
+	fn ethereum_digest() -> DigestItem {
 		let partial_header = ethereum::PartialHeader {
 			parent_hash: H256::random(),
 			beneficiary: H160::default(),
@@ -537,13 +527,11 @@ mod test {
 		};
 		let ethereum_transactions: Vec<ethereum::TransactionV2> = vec![];
 		let ethereum_block = ethereum::Block::new(partial_header, ethereum_transactions, vec![]);
-		Digest {
-			logs: vec![sp_runtime::generic::DigestItem::Consensus(
-				fp_consensus::FRONTIER_ENGINE_ID,
-				fp_consensus::PostLog::Hashes(fp_consensus::Hashes::from_block(ethereum_block))
-					.encode(),
-			)],
-		}
+		DigestItem::Consensus(
+			fp_consensus::FRONTIER_ENGINE_ID,
+			fp_consensus::PostLog::Hashes(fp_consensus::Hashes::from_block(ethereum_block))
+				.encode(),
+		)
 	}
 
 	#[tokio::test]
@@ -561,15 +549,7 @@ mod test {
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
 		// Overrides
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		// Indexer backend
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
@@ -584,7 +564,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -595,7 +575,15 @@ mod test {
 		let mut logs: Vec<(i32, fc_db::sql::Log)> = vec![];
 		for block_number in 1..11 {
 			// New block including pallet ethereum block digest
-			let mut builder = client.new_block(ethereum_digest()).unwrap();
+			let chain = client.chain_info();
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(chain.best_hash)
+				.with_parent_block_number(chain.best_number)
+				.build()
+				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			// Addresses
 			let address_1 = H160::repeat_byte(0x01);
 			let address_2 = H160::repeat_byte(0x02);
@@ -639,7 +627,7 @@ mod test {
 			let block_hash = block.header.hash();
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
 			logs.push((
-				block_number as i32,
+				block_number,
 				fc_db::sql::Log {
 					address: address_1.as_bytes().to_owned(),
 					topic_1: Some(topics_1_1.as_bytes().to_owned()),
@@ -652,7 +640,7 @@ mod test {
 				},
 			));
 			logs.push((
-				block_number as i32,
+				block_number,
 				fc_db::sql::Log {
 					address: address_2.as_bytes().to_owned(),
 					topic_1: Some(topics_2_1.as_bytes().to_owned()),
@@ -676,7 +664,7 @@ mod test {
 
 		// Spawn worker after creating the blocks will resolve the interval future.
 		// Because the SyncWorker is spawned at service level, in the real world this will only
-		// happen when we are in major syncing (where there is lack of import notificatons).
+		// happen when we are in major syncing (where there is lack of import notifications).
 		tokio::task::spawn(async move {
 			crate::sql::SyncWorker::run(
 				client.clone(),
@@ -695,7 +683,7 @@ mod test {
 		});
 
 		// Enough time for interval to run
-		futures_timer::Delay::new(std::time::Duration::from_millis(1500)).await;
+		futures_timer::Delay::new(Duration::from_millis(1500)).await;
 
 		// Query db
 		let db_logs = sqlx::query(
@@ -764,15 +752,7 @@ mod test {
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
 		// Overrides
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		// Indexer backend
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
@@ -787,7 +767,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -828,7 +808,15 @@ mod test {
 		let mut logs: Vec<(i32, fc_db::sql::Log)> = vec![];
 		for block_number in 1..11 {
 			// New block including pallet ethereum block digest
-			let mut builder = client.new_block(ethereum_digest()).unwrap();
+			let chain = client.chain_info();
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(chain.best_hash)
+				.with_parent_block_number(chain.best_number)
+				.build()
+				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			// Addresses
 			let address_1 = H160::random();
 			let address_2 = H160::random();
@@ -872,7 +860,7 @@ mod test {
 			let block_hash = block.header.hash();
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
 			logs.push((
-				block_number as i32,
+				block_number,
 				fc_db::sql::Log {
 					address: address_1.as_bytes().to_owned(),
 					topic_1: Some(topics_1_1.as_bytes().to_owned()),
@@ -885,7 +873,7 @@ mod test {
 				},
 			));
 			logs.push((
-				block_number as i32,
+				block_number,
 				fc_db::sql::Log {
 					address: address_2.as_bytes().to_owned(),
 					topic_1: Some(topics_2_1.as_bytes().to_owned()),
@@ -898,7 +886,7 @@ mod test {
 				},
 			));
 			// Let's not notify too quickly
-			futures_timer::Delay::new(std::time::Duration::from_millis(100)).await;
+			futures_timer::Delay::new(Duration::from_millis(100)).await;
 		}
 
 		// Query db
@@ -968,15 +956,7 @@ mod test {
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
 		// Overrides
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		// Indexer backend
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
@@ -991,7 +971,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -1036,9 +1016,15 @@ mod test {
 		let mut hashes_to_be_orphaned: Vec<H256> = vec![];
 		for block_number in 1..11 {
 			// New block including pallet ethereum block digest
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
@@ -1050,7 +1036,7 @@ mod test {
 			}
 			parent_hash = block_hash;
 			// Let's not notify too quickly
-			futures_timer::Delay::new(std::time::Duration::from_millis(100)).await;
+			futures_timer::Delay::new(Duration::from_millis(100)).await;
 		}
 
 		// Test all blocks are initially canon.
@@ -1070,15 +1056,21 @@ mod test {
 		parent_hash = common_ancestor;
 		for _ in 1..11 {
 			// New block including pallet ethereum block digest
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
 			parent_hash = block_hash;
 			// Let's not notify too quickly
-			futures_timer::Delay::new(std::time::Duration::from_millis(100)).await;
+			futures_timer::Delay::new(Duration::from_millis(100)).await;
 		}
 
 		// Test the reorged chain is correctly indexed.
@@ -1102,13 +1094,12 @@ mod test {
 		let canon = res
 			.clone()
 			.into_iter()
-			.filter_map(|it| if it.1 == 1 { Some(it) } else { None })
+			.filter(|&it| it.1 == 1)
 			.collect::<Vec<(H256, i32, i32)>>();
 		assert_eq!(canon.len(), 18);
 
 		// and 2 of which are the originally tracked as orphaned
 		let not_canon = res
-			.clone()
 			.into_iter()
 			.filter_map(|it| if it.1 == 0 { Some(it.0) } else { None })
 			.collect::<Vec<H256>>();
@@ -1131,15 +1122,7 @@ mod test {
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
 		// Overrides
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		// Indexer backend
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
@@ -1154,7 +1137,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -1169,13 +1152,19 @@ mod test {
 			.expect("genesis hash");
 		let mut best_block_hashes: Vec<H256> = vec![];
 		for _block_number in 1..=5 {
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
-			best_block_hashes.insert(0, block_hash.clone());
+			best_block_hashes.insert(0, block_hash);
 			parent_hash = block_hash;
 		}
 
@@ -1221,7 +1210,7 @@ mod test {
 			.await
 		});
 		// Enough time for indexing
-		futures_timer::Delay::new(std::time::Duration::from_millis(1500)).await;
+		futures_timer::Delay::new(Duration::from_millis(1500)).await;
 
 		// Test the reorged chain is correctly indexed.
 		let actual_imported_blocks =
@@ -1278,15 +1267,7 @@ mod test {
 		let (client, _) =
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
 				path: Path::new("sqlite:///")
@@ -1300,7 +1281,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -1333,7 +1314,7 @@ mod test {
 			.await
 		});
 		// Enough time for startup
-		futures_timer::Delay::new(std::time::Duration::from_millis(200)).await;
+		futures_timer::Delay::new(Duration::from_millis(200)).await;
 
 		// Import 3 blocks as part of normal operation, storing them oldest first.
 		sync_oracle_wrapper.set_sync_status(false);
@@ -1343,19 +1324,25 @@ mod test {
 			.expect("genesis hash");
 		let mut best_block_hashes: Vec<H256> = vec![];
 		for _block_number in 1..=3 {
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
-			best_block_hashes.push(block_hash.clone());
+			best_block_hashes.push(block_hash);
 			parent_hash = block_hash;
 		}
 
 		// Enough time for indexing
-		futures_timer::Delay::new(std::time::Duration::from_millis(3000)).await;
+		futures_timer::Delay::new(Duration::from_millis(3000)).await;
 
 		// Test the chain is correctly indexed.
 		let actual_imported_blocks =
@@ -1381,15 +1368,7 @@ mod test {
 		let (client, _) =
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
 				path: Path::new("sqlite:///")
@@ -1403,7 +1382,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -1436,7 +1415,7 @@ mod test {
 			.await
 		});
 		// Enough time for startup
-		futures_timer::Delay::new(std::time::Duration::from_millis(200)).await;
+		futures_timer::Delay::new(Duration::from_millis(200)).await;
 
 		// Import 3 blocks as part of normal operation, storing them oldest first.
 		sync_oracle_wrapper.set_sync_status(false);
@@ -1446,27 +1425,39 @@ mod test {
 			.expect("genesis hash");
 		let mut best_block_hashes: Vec<H256> = vec![];
 		for _block_number in 1..=3 {
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
-			best_block_hashes.push(block_hash.clone());
+			best_block_hashes.push(block_hash);
 			parent_hash = block_hash;
 		}
 
 		// create non-best block
-		let builder = client
-			.new_block_at(best_block_hashes[0], ethereum_digest(), false)
+		let mut builder = BlockBuilderBuilder::new(&*client)
+			.on_parent_block(best_block_hashes[0])
+			.fetch_parent_block_number(&*client)
+			.unwrap()
+			.build()
 			.unwrap();
+		builder
+			.push_deposit_log_digest_item(ethereum_digest())
+			.expect("deposit log");
 		let block = builder.build().unwrap().block;
 
 		executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
 
 		// Enough time for indexing
-		futures_timer::Delay::new(std::time::Duration::from_millis(3000)).await;
+		futures_timer::Delay::new(Duration::from_millis(3000)).await;
 
 		// Test the chain is correctly indexed.
 		let actual_imported_blocks =
@@ -1492,15 +1483,7 @@ mod test {
 		let (client, _) =
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
 				path: Path::new("sqlite:///")
@@ -1514,7 +1497,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -1547,7 +1530,7 @@ mod test {
 			.await
 		});
 		// Enough time for startup
-		futures_timer::Delay::new(std::time::Duration::from_millis(200)).await;
+		futures_timer::Delay::new(Duration::from_millis(200)).await;
 
 		// Import 3 blocks as part of normal operation, storing them oldest first.
 		sync_oracle_wrapper.set_sync_status(false);
@@ -1557,19 +1540,25 @@ mod test {
 			.expect("genesis hash");
 		let mut best_block_hashes: Vec<H256> = vec![];
 		for _block_number in 1..=3 {
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
-			best_block_hashes.push(block_hash.clone());
+			best_block_hashes.push(block_hash);
 			parent_hash = block_hash;
 		}
 
 		// Enough time for indexing
-		futures_timer::Delay::new(std::time::Duration::from_millis(3000)).await;
+		futures_timer::Delay::new(Duration::from_millis(3000)).await;
 
 		// Test the chain is correctly indexed.
 		let actual_imported_blocks =
@@ -1595,15 +1584,7 @@ mod test {
 		let (client, _) =
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
 				path: Path::new("sqlite:///")
@@ -1617,7 +1598,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -1650,7 +1631,7 @@ mod test {
 			.await
 		});
 		// Enough time for startup
-		futures_timer::Delay::new(std::time::Duration::from_millis(200)).await;
+		futures_timer::Delay::new(Duration::from_millis(200)).await;
 
 		// Import 3 blocks as part of normal operation, storing them oldest first.
 		sync_oracle_wrapper.set_sync_status(false);
@@ -1660,27 +1641,39 @@ mod test {
 			.expect("genesis hash");
 		let mut best_block_hashes: Vec<H256> = vec![];
 		for _block_number in 1..=3 {
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 
 			executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
-			best_block_hashes.push(block_hash.clone());
+			best_block_hashes.push(block_hash);
 			parent_hash = block_hash;
 		}
 
 		// create non-best block
-		let builder = client
-			.new_block_at(best_block_hashes[0], ethereum_digest(), false)
+		let mut builder = BlockBuilderBuilder::new(&*client)
+			.on_parent_block(best_block_hashes[0])
+			.fetch_parent_block_number(&*client)
+			.unwrap()
+			.build()
 			.unwrap();
+		builder
+			.push_deposit_log_digest_item(ethereum_digest())
+			.expect("deposit log");
 		let block = builder.build().unwrap().block;
 
 		executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
 
 		// Enough time for indexing
-		futures_timer::Delay::new(std::time::Duration::from_millis(3000)).await;
+		futures_timer::Delay::new(Duration::from_millis(3000)).await;
 
 		// Test the chain is correctly indexed.
 		let actual_imported_blocks =
@@ -1706,15 +1699,7 @@ mod test {
 		let (client, _) =
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
 				path: Path::new("sqlite:///")
@@ -1728,7 +1713,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -1761,7 +1746,7 @@ mod test {
 			.await
 		});
 		// Enough time for startup
-		futures_timer::Delay::new(std::time::Duration::from_millis(200)).await;
+		futures_timer::Delay::new(Duration::from_millis(200)).await;
 
 		// Import 3 blocks as part of initial network sync, storing them oldest first.
 		sync_oracle_wrapper.set_sync_status(true);
@@ -1771,19 +1756,25 @@ mod test {
 			.expect("genesis hash");
 		let mut best_block_hashes: Vec<H256> = vec![];
 		for _block_number in 1..=3 {
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 
 			executor::block_on(client.import(BlockOrigin::NetworkInitialSync, block)).unwrap();
-			best_block_hashes.push(block_hash.clone());
+			best_block_hashes.push(block_hash);
 			parent_hash = block_hash;
 		}
 
 		// Enough time for indexing
-		futures_timer::Delay::new(std::time::Duration::from_millis(3000)).await;
+		futures_timer::Delay::new(Duration::from_millis(3000)).await;
 
 		// Test the chain is correctly indexed.
 		let actual_imported_blocks =
@@ -1809,15 +1800,7 @@ mod test {
 		let (client, _) =
 			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
 		let mut client = Arc::new(client);
-		let mut overrides_map = BTreeMap::new();
-		overrides_map.insert(
-			EthereumStorageSchema::V3,
-			Box::new(SchemaV3Override::new(client.clone())) as Box<dyn StorageOverride<_>>,
-		);
-		let overrides = Arc::new(OverrideHandle {
-			schemas: overrides_map,
-			fallback: Box::new(SchemaV3Override::new(client.clone())),
-		});
+		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 		let indexer_backend = fc_db::sql::Backend::new(
 			fc_db::sql::BackendConfig::Sqlite(fc_db::sql::SqliteBackendConfig {
 				path: Path::new("sqlite:///")
@@ -1831,7 +1814,7 @@ mod test {
 			}),
 			100,
 			None,
-			overrides.clone(),
+			storage_override.clone(),
 		)
 		.await
 		.expect("indexer pool to be created");
@@ -1864,7 +1847,7 @@ mod test {
 			.await
 		});
 		// Enough time for startup
-		futures_timer::Delay::new(std::time::Duration::from_millis(200)).await;
+		futures_timer::Delay::new(Duration::from_millis(200)).await;
 
 		// Import 3 blocks as part of initial network sync, storing them oldest first.
 		sync_oracle_wrapper.set_sync_status(true);
@@ -1874,19 +1857,25 @@ mod test {
 			.expect("genesis hash");
 		let mut best_block_hashes: Vec<H256> = vec![];
 		for _block_number in 1..=3 {
-			let builder = client
-				.new_block_at(parent_hash, ethereum_digest(), false)
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(parent_hash)
+				.fetch_parent_block_number(&*client)
+				.unwrap()
+				.build()
 				.unwrap();
+			builder
+				.push_deposit_log_digest_item(ethereum_digest())
+				.expect("deposit log");
 			let block = builder.build().unwrap().block;
 			let block_hash = block.header.hash();
 
 			executor::block_on(client.import(BlockOrigin::NetworkInitialSync, block)).unwrap();
-			best_block_hashes.push(block_hash.clone());
+			best_block_hashes.push(block_hash);
 			parent_hash = block_hash;
 		}
 
 		// Enough time for indexing
-		futures_timer::Delay::new(std::time::Duration::from_millis(3000)).await;
+		futures_timer::Delay::new(Duration::from_millis(3000)).await;
 
 		// Test the chain is correctly indexed.
 		let actual_imported_blocks =

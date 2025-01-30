@@ -14,11 +14,10 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 environmental = { workspace = true, optional = true }
 evm = { workspace = true, features = ["with-codec"] }
-hex = { workspace = true }
+hash-db = { workspace = true }
 hex-literal = { workspace = true }
 impl-trait-for-tuples = "0.2.2"
 log = { workspace = true }
-rlp = { workspace = true }
 scale-codec = { package = "parity-scale-codec", workspace = true }
 scale-info = { workspace = true }
 # Substrate
@@ -28,11 +27,12 @@ frame-system = { workspace = true }
 sp-core = { workspace = true }
 sp-io = { workspace = true }
 sp-runtime = { workspace = true }
-sp-std = { workspace = true }
+# Frontier
 fp-account = { workspace = true }
-fp-evm = { workspace = true }
+fp-evm = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
+hex = { workspace = true }
 # Substrate
 pallet-balances = { workspace = true, features = ["default", "insecure_zero_ed"] }
 pallet-evm-precompile-simple = { workspace = true, features = ["default"] }
@@ -46,17 +46,15 @@ std = [
 	"evm/with-serde",
 	"hex/std",
 	"log/std",
-	"rlp/std",
 	"scale-codec/std",
 	"scale-info/std",
 	# Substrate
-	"frame-benchmarking/std",
+	"frame-benchmarking?/std",
 	"frame-support/std",
 	"frame-system/std",
 	"sp-core/std",
 	"sp-io/std",
 	"sp-runtime/std",
-	"sp-std/std",
 	# Frontier
 	"fp-account/std",
 	"fp-evm/std",

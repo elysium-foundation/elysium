@@ -1,8 +1,8 @@
 [package]
 name = "fc-cli"
 version = "1.0.0-dev"
-license = { workspace = true }
-description = { workspace = true }
+license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
+description = "Frontier CLI interface"
 authors = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }
@@ -36,12 +36,13 @@ sp-consensus = { workspace = true }
 sp-io = { workspace = true }
 substrate-test-runtime-client = { workspace = true }
 # Frontier
+fc-api = { workspace = true }
 fc-db = { workspace = true, features = ["rocksdb"] }
 elysium-runtime = { workspace = true, features = ["default"] }
 
 [features]
 default = ["rocksdb"]
 rocksdb = [
-    "sc-cli/rocksdb",
-    "fc-db/rocksdb",
+	"sc-cli/rocksdb",
+	"fc-db/rocksdb",
 ]

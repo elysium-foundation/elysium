@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: Apache-2.0
 // This file is part of Frontier.
-//
-// Copyright (c) 2020-2022 Parity Technologies (UK) Ltd.
-//
+
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -24,10 +24,11 @@ use fp_evm::Context;
 use frame_support::{assert_err, assert_ok};
 use scale_codec::Encode;
 use sp_core::{H160, U256};
+use sp_runtime::BuildStorage;
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-	frame_system::GenesisConfig::default()
-		.build_storage::<Test>()
+	frame_system::GenesisConfig::<Test>::default()
+		.build_storage()
 		.unwrap()
 		.into()
 }
@@ -112,7 +113,7 @@ fn dispatch_validator_works_well() {
 			) -> Option<PrecompileFailure> {
 				match call {
 					RuntimeCall::System(frame_system::Call::remark { remark: _ }) => {
-						return Some(PrecompileFailure::Error {
+						Some(PrecompileFailure::Error {
 							exit_status: ExitError::Other("This call is not allowed".into()),
 						})
 					}

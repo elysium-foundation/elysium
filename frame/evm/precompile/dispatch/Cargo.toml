@@ -8,14 +8,15 @@ edition = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
+scale-codec = { package = "parity-scale-codec", workspace = true }
 # Substrate
 frame-support = { workspace = true }
+sp-runtime = { workspace = true }
 # Frontier
 fp-evm = { workspace = true }
 pallet-evm = { workspace = true }
 
 [dev-dependencies]
-scale-codec = { package = "parity-scale-codec", workspace = true }
 scale-info = { workspace = true }
 # Substrate
 frame-system = { workspace = true, features = ["default"] }
@@ -25,13 +26,14 @@ pallet-utility = { workspace = true, features = ["default"] }
 sp-core = { workspace = true, features = ["default"] }
 sp-io = { workspace = true, features = ["default"] }
 sp-runtime = { workspace = true, features = ["default"] }
-sp-std = { workspace = true, features = ["default"] }
 
 [features]
 default = ["std"]
 std = [
+	"scale-codec/std",
 	# Substrate
 	"frame-support/std",
+	"sp-runtime/std",
 	# Frontier
 	"fp-evm/std",
 	"pallet-evm/std",

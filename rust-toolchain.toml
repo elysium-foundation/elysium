@@ -1,24 +1,8 @@
-#[toolchain]
-#channel = "nightly-2024-01-01"
-#components = [
-#	"cargo",
-#	"clippy",
-#	"rust-analyzer",
-#	"rust-src",
-#	"rust-std",
-#	"rustc-dev",
-#	"rustc",
-#	"rustfmt",
-#]
-#targets = [ "wasm32-unknown-unknown" ]
-#profile = "minimal"
-
-
 [toolchain]
 # Stable
-#channel = "1.68.2" # rustc 1.68.2 (9eb3afe9e 2023-03-27)
+channel = "1.81.0" # rustc 1.77.0 (aedd173a2 2024-03-21)
 # Nightly
-channel = "nightly-2022-11-16" # rustc 1.67.0-nightly (a00f8ba7f 2022-11-15)
-components = ["rustfmt", "clippy"]
-targets = ["wasm32-unknown-unknown"]
+#channel = "nightly-2024-02-05" # rustc 1.78.0-nightly (f067fd608 2024-02-05)
+components = ["cargo", "clippy", "rustc", "rustfmt", "rust-src", "rust-docs"]
 profile = "minimal"
+targets = ["wasm32-unknown-unknown"]

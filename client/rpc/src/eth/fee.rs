@@ -1,18 +1,18 @@
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 // This file is part of Frontier.
-//
-// Copyright (c) 2022 Parity Technologies (UK) Ltd.
-//
+
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
+
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
-//
+
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
@@ -23,23 +23,24 @@ use sc_client_api::backend::{Backend, StorageProvider};
 use sc_transaction_pool::ChainApi;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_runtime::traits::{Block as BlockT, UniqueSaturatedInto};
+use sp_runtime::{
+	traits::{Block as BlockT, UniqueSaturatedInto},
+	Permill,
+};
 // Frontier
 use fc_rpc_core::types::*;
 use fp_rpc::EthereumRuntimeRPCApi;
 
-use crate::{
-	eth::{Eth, EthConfig},
-	frontier_backend_client, internal_err,
-};
+use crate::{eth::Eth, frontier_backend_client, internal_err};
 
-impl<B, C, P, CT, BE, A: ChainApi, EC: EthConfig<B, C>> Eth<B, C, P, CT, BE, A, EC>
+impl<B, C, P, CT, BE, A, CIDP, EC> Eth<B, C, P, CT, BE, A, CIDP, EC>
 where
 	B: BlockT,
 	C: ProvideRuntimeApi<B>,
 	C::Api: EthereumRuntimeRPCApi<B>,
 	C: HeaderBackend<B> + StorageProvider<B, BE> + 'static,
 	BE: Backend<B> + 'static,
+	A: ChainApi<Block = B>,
 {
 	pub fn gas_price(&self) -> RpcResult<U256> {
 		let block_hash = self.client.info().best_hash;
@@ -53,7 +54,7 @@ where
 	pub async fn fee_history(
 		&self,
 		block_count: U256,
-		newest_block: BlockNumber,
+		newest_block: BlockNumberOrHash,
 		reward_percentiles: Option<Vec<f64>>,
 	) -> RpcResult<FeeHistory> {
 		// The max supported range size is 1024 by spec.
@@ -72,7 +73,9 @@ where
 		.await?
 		{
 			let Ok(number) = self.client.expect_block_number_from_id(&id) else {
-				return Err(internal_err(format!("Failed to retrieve block number at {id}")));
+				return Err(internal_err(format!(
+					"Failed to retrieve block number at {id}"
+				)));
 			};
 			// Highest and lowest block number within the requested range.
 			let highest = UniqueSaturatedInto::<u64>::unique_saturated_into(number);
@@ -135,20 +138,14 @@ where
 						self.client.expect_block_hash_from_id(&id).map_err(|_| {
 							internal_err(format!("Expect block number from id: {}", id))
 						})?;
-					let schema =
-						fc_storage::onchain_storage_schema(self.client.as_ref(), substrate_hash);
-					let handler = self
-						.overrides
-						.schemas
-						.get(&schema)
-						.unwrap_or(&self.overrides.fallback);
-					let default_elasticity = sp_runtime::Permill::from_parts(125_000);
-					let elasticity = handler
+					let elasticity = self
+						.storage_override
 						.elasticity(substrate_hash)
-						.unwrap_or(default_elasticity)
+						.unwrap_or(Permill::from_parts(125_000))
 						.deconstruct();
 					let elasticity = elasticity as f64 / 1_000_000f64;
-					let last_fee_per_gas = last_fee_per_gas.as_u64() as f64;
+					let last_fee_per_gas =
+						UniqueSaturatedInto::<u64>::unique_saturated_into(*last_fee_per_gas) as f64;
 					if last_gas_used > &0.5 {
 						// Increase base gas
 						let increase = ((last_gas_used - 0.5) * 2f64) * elasticity;

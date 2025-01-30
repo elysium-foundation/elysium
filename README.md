@@ -1,153 +1,121 @@
-# ![Elysium](https://cdn.elysiumchain.tech/elysium-chain-meta-image.png)
+# Polkadot Frontier
 
-# Information
-**An Ethereum compatible Chain built with the [Polkadot-SDK](https://github.com/paritytech/polkadot-sdk).**
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/paritytech/frontier/rust.yml)](https://github.com/paritytech/frontier/actions)
+[![Matrix](https://img.shields.io/matrix/frontier:matrix.org)](https://matrix.to/#/#frontier:matrix.org)
 
-👉 _Discover the Elysium project at [elysium](https://docs.elysiumchain.tech/docs/network-endpoints)._<br>
-👉 _Learn to [use the Elysium network](https://docs.elysiumchain.tech/docs/intro) with our technical docs._<br>
+Frontier is the EVM backbone of Polkadot.
 
-## Run Elysium Local Development Node with Docker
+## Features
 
-Docker images are published for every tagged release.
+Frontier provides a compatibility layer of EVM, so that you can run any Ethereum
+dapps on Polkadot, unmodified. Using Frontier, you get access to all of the
+Ethereum RPC APIs you are already familiar with, and therefore you can continue
+to develop your dapps in your favourite Ethereum developer tools. As a bonus,
+you can even run many Ethereum L2s inside Frontier!
 
-```bash
-# Join the public testnet
-docker run vaival/elysium-testnet:latest --dev --ws-external --rpc-external --rpc-cors all
-```
+Frontier is also a migration framework. Besides the common strategy of direct
+state export/import and transaction-level replays, Frontier's Pre-Log Wrapper
+Block feature provides a possible method for a zero-downtime live migration.
 
-You can find more detailed instructions to [Run a Node on Elysium
-](https://docs.elysiumchain.tech/docs/node-operator/dev-node)
+## Releases
 
+### Primitives
 
-### Sealing Options
+Those are suitable to be included in a runtime. Primitives are structures shared
+by higher-level code.
 
-The above command will start the node in instant seal mode. It creates a block when a transaction arrives, similar to Ganache's auto-mine. You can also choose to author blocks at a regular interval, or control authoring manually through the RPC.
+* `fp-consensus`: Consensus layer primitives.
+  ![Crates.io](https://img.shields.io/crates/v/fp-consensus)
+* `fp-evm`: EVM primitives. ![Crates.io](https://img.shields.io/crates/v/fp-evm)
+* `fp-rpc`: RPC primitives. ![Crates.io](https://img.shields.io/crates/v/fp-rpc)
+* `fp-storage`: Well-known storage information.
+  ![Crates.io](https://img.shields.io/crates/v/fp-storage)
 
-```bash
-# Author a block every 6 seconds.
-docker run vaival/elysium-testnet:latest --dev --ws-external --rpc-external --rpc-cors all --sealing 6000
+### Pallets
 
-# Manually control the block authorship and finality
-docker run vaival/elysium-testnet:latest --dev --ws-external --rpc-external --rpc-cors all --sealing manual
-```
+Those pallets serve as runtime components for projects using Frontier.
 
-### Prefunded Development Addresses
+* `pallet-evm`: EVM execution handling.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-evm)
+* `pallet-ethereum`: Ethereum block handling.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-ethereum)
+* `pallet-dynamic-fee`: Extends the fee handling logic so that it can be changed
+  within the runtime.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-dynamic-fee)
 
-Running Elysium in development mode will pre-fund several well-known addresses that (mostly) contain the letters "th" in their names to remind you that they are for ethereum-compatible usage. These addresses are derived from
-Substrate's canonical mnemonic: `bottom drive obey lake curtain smoke basket hold race lonely fit walk`
+### EVM Pallet precompiles
 
-```
-# Alice:
-- Address: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
-- PrivKey: 0xe5be9a5092b81bca64be81d212e7f2f9eba183bb7a90954f7b76361f6edb5c0a
-```
+Those precompiles can be used together with `pallet-evm` for additional
+functionalities of the EVM executor.
 
-Mainnet tokens are only available for those people who are bridging their assets from Polygon to [Elysium using Bridge](https://bridge.elysiumchain.tech).
+* `pallet-evm-precompile-simple`: Four basic precompiles in Ethereum EVMs.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-evm-precompile-simple)
+* `pallet-evm-precompile-blake2`: BLAKE2 precompile.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-evm-precompile-blake2)
+* `pallet-evm-precompile-bn128`: BN128 precompile.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-evm-precompile-bn128)
+* `pallet-evm-precompile-ed25519`: ED25519 precompile.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-evm-precompile-ed25519)
+* `pallet-evm-precompile-modexp`: MODEXP precompile.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-evm-precompile-modexp)
+* `pallet-evm-precompile-sha3fips`: Standard SHA3 precompile.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-evm-precompile-sha3fips)
+* `pallet-evm-precompile-dispatch`: Enable interoperability between EVM
+  contracts and other Substrate runtime components.
+  ![Crates.io](https://img.shields.io/crates/v/pallet-evm-precompile-dispatch)
 
-| Network  | URL	                                                                                                            | 
-|----------|-----------------------------------------------------------------------------------------------------------------|
-| Atlantis | The [Faucet Atlantis](https://faucet.atlantischain.network/) website. The faucet dispenses 1 ELY every 24 hours | 
-| Elysium  | The [Faucet Elysium](https://faucet.elysiumchain.tech/) website. The faucet dispenses 3 ELY for one time.       |
+### Client-side libraries
 
-## Build the Elysium Node
+Those are libraries that should be used on client-side to enable RPC, block hash
+mapping, and other features.
 
-To build Elysium, a proper Substrate development environment is required. If you're new to working with Substrate-based blockchains, consider starting with the [Getting Started with Elysium Development Node](https://docs.elysiumchain.tech/docs/category/node-operator) documentation.
+* `fc-consensus`: Consensus block import.
+  ![Crates.io](https://img.shields.io/crates/v/fc-consensus)
+* `fc-db`: Frontier-specific database backend.
+  ![Crates.io](https://img.shields.io/crates/v/fc-db)
+* `fc-mapping-sync`: Block hash mapping syncing logic.
+  ![Crates.io](https://img.shields.io/crates/v/fc-mapping-sync)
+* `fc-rpc-core`: Core RPC logic.
+  ![Crates.io](https://img.shields.io/crates/v/fc-rpc-core)
+* `fc-rpc`: RPC implementation.
+  ![Crates.io](https://img.shields.io/crates/v/fc-rpc)
 
-If you need a refresher setting up your Substrate environment, see [Substrate's Getting Started Guide](https://substrate.dev/docs/en/knowledgebase/getting-started/).
+## Development workflow
 
-```bash
-# Fetch the code
-git clone https://github.com/elysium-foundation/elysium
-cd elysium
+### Pull request
 
-# Build the node (The first build will be long (~30min))
-cargo build --release --locked
+All changes (except new releases) are handled through pull requests.
 
-# To execute the chain, run:
-./target/release/elysium --dev
+### Versioning
 
-```
+Frontier follows [Semantic Versioning](https://semver.org/). An unreleased crate
+in the repository will have the `-dev` suffix in the end, and we do rolling
+releases.
 
-## Install required packages and Rust
-To run the Elysium you need to have ubuntu 20.04 installed. Follow these steps to set up rust for building the repo.
+When you make a pull request against this repository, please also update the
+affected crates' versions, using the following rules. Note that the rules should
+be applied recursively -- if a change modifies any upper crate's dependency
+(even just the `Cargo.toml` file), then the upper crate will also need to apply
+those rules.
 
-```bash
-sudo apt update
-sudo apt install --assume-yes build-essential git clang curl libssl-dev protobuf-compiler llvm libudev-dev make
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+Additionally, if your change is notable, then you should also modify the
+corresponding `CHANGELOG.md` file, in the "Unreleased" section.
 
-#Follow the prompts displayed to proceed with a default installation.
-source $HOME/.cargo/env
-rustup default stable
-rustup update
-rustup update nightly
-rustup target add wasm32-unknown-unknown --toolchain nightly
+If the affected crate already has `-dev` suffix:
 
-#Verify the configuration of your development environment by running the following command:
-rustup show
-rustup +nightly show
-```
+* If your change is a patch, then you do not have to update any versions.
+* If your change introduces a new feature, please check if the local version
+  already had its minor version bumped, if not, bump it.
+* If your change modifies the current interface, please check if the local
+  version already had its major version bumped, if not, bump it.
 
-## Run Tests
+If the affected crate does not yet have `-dev` suffix:
 
-Elysium incorporates Rust unit tests and TypeScript integration tests, which are executed in CI and can also be run locally.
+* If your change is a patch, then bump the patch version, and add `-dev` suffix.
+* If your change introduces a new feature, then bump the minor version, and add
+  `-dev` suffix.
+* If your change modifies the current interface, then bump the major version,
+  and add `-dev` suffix.
 
-```bash
-# Run the Rust unit tests
-cargo test
-```
-## Chain ID
-
-Elysium Chain Mainnet chain ID is: 1339 & Testnet chain ID is: 1338 for more information follow [Elysium Network](/docs/intro#elysium-networks)
-
-### Public Endpoints
-
-Elysium has two endpoints available for users to connect to: one for RPC and one for Websocket connection.
-
-The endpoints in this section are for development purposes only and are not meant to be used in production applications.
-
-If you are looking for an API provider suitable for production use, you can check out the Node Operator section of
-this guide to setup your own node.
-
-#### Atlantis (Testnet)
-
-| Variable  | Value                             |
-|-----------|-----------------------------------|
-| Chain ID	 | 1338                              |
-| RPC URL   | https://rpc.atlantischain.network | 
-| WSS URL	  | wss://ws.atlantischain.network    | 
-
-#### Elysium Mainnet
-
-| Variable  | Value                         |
-|-----------|-------------------------------|
-| Chain ID	 | 1339                          |
-| RPC URL   | https://rpc.elysiumchain.tech | 
-| WSS URL	  | wss://ws.elysiumchain.tech    | 
-
-
-## Runtime Architecture
-
-The Elysium Runtime, built using FRAME, comprises pallets from Polkadot-SDK, Frontier, and the `pallets/` directory.
-
-From Polkadot-SDK:
-
-- **Utility**: Allows users to use derivative accounts, and batch calls
-- **Balances**: Tracks ELY token balances
-- **Sudo**: Allows a privileged account to make arbitrary runtime changes. This will be removed by Governance.
-- **Timestamp**: On-Chain notion of time
-- **Transaction Payment**: Transaction payment (fee) management
-- **Randomness Collective Flip**: A (mock) onchain randomness beacon, which will be replaced by chain randomness by mainnet.
-
-From Frontier:
-
-- **EVM Chain Id**: A place to store the chain id
-- **EVM**: Encapsulates execution logic for an Ethereum Virtual Machine
-- **Ethereum**: Ethereum-style data encoding and access for the EVM.
-
-The following pallets are stored in `pallets/`. They are designed for Elysium's specific requirements:
-When modifying the git repository for these dependencies, a tool called [diener](https://github.com/bkchr/diener) can be used to replace the git URL and branch for each reference in all `Cargo.toml` files with a single command. This alleviates a lot of the repetitive modifications necessary when changing dependency versions.
-
-## Changelog
-
-You can find the changelog [here](./CHANGELOG.md).
+If your pull request introduces a new crate, please set its version to
+`1.0.0-dev`.

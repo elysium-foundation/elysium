@@ -21,7 +21,9 @@ sp-core = { workspace = true }
 sp-io = { workspace = true }
 sp-runtime = { workspace = true }
 sp-runtime-interface = { workspace = true }
-sp-std = { workspace = true }
+
+# Polkadot / XCM
+xcm = { workspace = true }
 
 [dev-dependencies]
 
@@ -34,11 +36,18 @@ std = [
 	"log/std",
 	"scale-codec/std",
 	"scale-info/std",
-	"serde",
+	"serde/std",
 	# Substrate
 	"sp-core/std",
 	"sp-io/std",
 	"sp-runtime/std",
 	"sp-runtime-interface/std",
-	"sp-std/std",
+	"xcm/std",
+]
+serde = [
+	"dep:serde",
+	"impl-serde",
+	"scale-info/serde",
+	"sp-core/serde",
+	"sp-runtime/serde",
 ]

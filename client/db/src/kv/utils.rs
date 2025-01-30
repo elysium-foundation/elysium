@@ -1,18 +1,18 @@
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 // This file is part of Frontier.
-//
-// Copyright (c) 2020-2022 Parity Technologies (UK) Ltd.
-//
+
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
+
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
+
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
-//
+
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
@@ -52,6 +52,7 @@ pub fn open_database<Block: BlockT, C: HeaderBackend<Block>>(
 	Ok(db)
 }
 
+#[allow(unused_variables)]
 #[cfg(feature = "rocksdb")]
 fn open_kvdb_rocksdb<Block: BlockT, C: HeaderBackend<Block>>(
 	client: Arc<C>,
@@ -70,10 +71,10 @@ fn open_kvdb_rocksdb<Block: BlockT, C: HeaderBackend<Block>>(
 	db_config.create_if_missing = create;
 
 	let db = kvdb_rocksdb::Database::open(&db_config, path).map_err(|err| format!("{}", err))?;
-	// write database version only after the database is succesfully opened
+	// write database version only after the database is successfully opened
 	#[cfg(not(test))]
 	super::upgrade::update_version(path).map_err(|_| "Cannot update db version".to_string())?;
-	return Ok(sp_database::as_database(db));
+	Ok(sp_database::as_database(db))
 }
 
 #[cfg(not(feature = "rocksdb"))]
@@ -86,6 +87,7 @@ fn open_kvdb_rocksdb<Block: BlockT, C: HeaderBackend<Block>>(
 	Err("Missing feature flags `rocksdb`".to_string())
 }
 
+#[allow(unused_variables)]
 fn open_parity_db<Block: BlockT, C: HeaderBackend<Block>>(
 	client: Arc<C>,
 	path: &Path,
@@ -101,7 +103,7 @@ fn open_parity_db<Block: BlockT, C: HeaderBackend<Block>>(
 	config.columns[super::columns::BLOCK_MAPPING as usize].btree_index = true;
 
 	let db = parity_db::Db::open_or_create(&config).map_err(|err| format!("{}", err))?;
-	// write database version only after the database is succesfully opened
+	// write database version only after the database is successfully opened
 	#[cfg(not(test))]
 	super::upgrade::update_version(path).map_err(|_| "Cannot update db version".to_string())?;
 	Ok(Arc::new(super::parity_db_adapter::DbAdapter(db)))

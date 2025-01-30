@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: Apache-2.0
 // This file is part of Frontier.
-//
-// Copyright (c) 2020-2022 Parity Technologies (UK) Ltd.
-//
+
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,34 +16,25 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![warn(unused_crate_dependencies)]
 
-use scale_codec::{Decode, Encode};
+extern crate alloc;
+
+use alloc::vec::Vec;
 pub use ethereum::{
 	AccessListItem, BlockV2 as Block, LegacyTransactionMessage, Log, ReceiptV3 as Receipt,
 	TransactionAction, TransactionV2 as Transaction,
 };
 use ethereum_types::{H160, H256, U256};
-use fp_evm::CheckEvmTransactionInput;
-use sp_std::vec::Vec;
-
-#[repr(u8)]
-#[derive(num_enum::FromPrimitive, num_enum::IntoPrimitive)]
-pub enum TransactionValidationError {
-	#[allow(dead_code)]
-	#[num_enum(default)]
-	UnknownError,
-	InvalidChainId,
-	InvalidSignature,
-	GasLimitTooLow,
-	GasLimitTooHigh,
-	MaxFeePerGasTooLow,
-}
+use fp_evm::{CallOrCreateInfo, CheckEvmTransactionInput};
+use frame_support::dispatch::{DispatchErrorWithPostInfo, PostDispatchInfo};
+use scale_codec::{Decode, Encode};
 
 pub trait ValidatedTransaction {
 	fn apply(
 		source: H160,
 		transaction: Transaction,
-	) -> frame_support::dispatch::DispatchResultWithPostInfo;
+	) -> Result<(PostDispatchInfo, CallOrCreateInfo), DispatchErrorWithPostInfo>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode)]
@@ -58,6 +49,47 @@ pub struct TransactionData {
 	pub value: U256,
 	pub chain_id: Option<u64>,
 	pub access_list: Vec<(H160, Vec<H256>)>,
+}
+
+impl TransactionData {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new(
+		action: TransactionAction,
+		input: Vec<u8>,
+		nonce: U256,
+		gas_limit: U256,
+		gas_price: Option<U256>,
+		max_fee_per_gas: Option<U256>,
+		max_priority_fee_per_gas: Option<U256>,
+		value: U256,
+		chain_id: Option<u64>,
+		access_list: Vec<(H160, Vec<H256>)>,
+	) -> Self {
+		Self {
+			action,
+			input,
+			nonce,
+			gas_limit,
+			gas_price,
+			max_fee_per_gas,
+			max_priority_fee_per_gas,
+			value,
+			chain_id,
+			access_list,
+		}
+	}
+
+	// The transact call wrapped in the extrinsic is part of the PoV, record this as a base cost for the size of the proof.
+	pub fn proof_size_base_cost(&self) -> u64 {
+		self.encode()
+			.len()
+			// signature
+			.saturating_add(65)
+			// pallet index
+			.saturating_add(1)
+			// call index
+			.saturating_add(1) as u64
+	}
 }
 
 impl From<TransactionData> for CheckEvmTransactionInput {

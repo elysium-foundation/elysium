@@ -20,7 +20,6 @@ frame-support = { workspace = true }
 frame-system = { workspace = true }
 sp-core = { workspace = true }
 sp-runtime = { workspace = true }
-sp-std = { workspace = true }
 # Frontier
 pallet-evm = { workspace = true }
 
@@ -34,12 +33,11 @@ std = [
 	"scale-codec/std",
 	"scale-info/std",
 	# Substrate
-	"frame-benchmarking/std",
+	"frame-benchmarking?/std",
 	"frame-support/std",
 	"frame-system/std",
 	"sp-core/std",
 	"sp-runtime/std",
-	"sp-std/std",
 	# Frontier
 	"pallet-evm/std",
 ]

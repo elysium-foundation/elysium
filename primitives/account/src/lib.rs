@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: Apache-2.0
 // This file is part of Frontier.
-//
-// Copyright (c) 2020-2023 Parity Technologies (UK) Ltd.
-//
+
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,26 +16,35 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![warn(unused_crate_dependencies)]
+
+extern crate alloc;
+
+use alloc::string::{String, ToString};
+use core::fmt;
 
 use scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 // Substrate
-use sp_core::{ecdsa, RuntimeDebug, H160, H256};
+use sp_core::{crypto::AccountId32, ecdsa, RuntimeDebug, H160, H256};
 use sp_io::hashing::keccak_256;
+use sp_runtime::MultiSignature;
 use sp_runtime_interface::pass_by::PassByInner;
+
+// Polkadot / XCM
+use xcm::latest::{Junction, Location};
 
 /// A fully Ethereum-compatible `AccountId`.
 /// Conforms to H160 address and ECDSA key standards.
 /// Alternative to H256->H160 mapping.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Default, Hash)]
 #[derive(Encode, Decode, MaxEncodedLen, TypeInfo)]
 pub struct AccountId20(pub [u8; 20]);
 
-#[cfg(feature = "std")]
+#[cfg(feature = "serde")]
 impl_serde::impl_fixed_hash_serde!(AccountId20, 20);
 
-#[cfg(feature = "std")]
-impl std::str::FromStr for AccountId20 {
+impl core::str::FromStr for AccountId20 {
 	type Err = &'static str;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -45,9 +54,8 @@ impl std::str::FromStr for AccountId20 {
 	}
 }
 
-#[cfg(feature = "std")]
-impl std::fmt::Display for AccountId20 {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for AccountId20 {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let address = hex::encode(self.0).trim_start_matches("0x").to_lowercase();
 		let address_hash = hex::encode(keccak_256(address.as_bytes()));
 
@@ -72,8 +80,8 @@ impl std::fmt::Display for AccountId20 {
 	}
 }
 
-impl sp_std::fmt::Debug for AccountId20 {
-	fn fmt(&self, f: &mut sp_std::fmt::Formatter<'_>) -> sp_std::fmt::Result {
+impl fmt::Debug for AccountId20 {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "{:?}", H160(self.0))
 	}
 }
@@ -81,6 +89,19 @@ impl sp_std::fmt::Debug for AccountId20 {
 impl From<[u8; 20]> for AccountId20 {
 	fn from(bytes: [u8; 20]) -> Self {
 		Self(bytes)
+	}
+}
+
+impl<'a> TryFrom<&'a [u8]> for AccountId20 {
+	type Error = ();
+	fn try_from(x: &'a [u8]) -> Result<AccountId20, ()> {
+		if x.len() == 20 {
+			let mut data = [0; 20];
+			data.copy_from_slice(x);
+			Ok(AccountId20(data))
+		} else {
+			Err(())
+		}
 	}
 }
 
@@ -102,6 +123,30 @@ impl From<AccountId20> for H160 {
 	}
 }
 
+impl AsRef<[u8]> for AccountId20 {
+	fn as_ref(&self) -> &[u8] {
+		&self.0[..]
+	}
+}
+
+impl AsMut<[u8]> for AccountId20 {
+	fn as_mut(&mut self) -> &mut [u8] {
+		&mut self.0[..]
+	}
+}
+
+impl AsRef<[u8; 20]> for AccountId20 {
+	fn as_ref(&self) -> &[u8; 20] {
+		&self.0
+	}
+}
+
+impl AsMut<[u8; 20]> for AccountId20 {
+	fn as_mut(&mut self) -> &mut [u8; 20] {
+		&mut self.0
+	}
+}
+
 impl From<ecdsa::Public> for AccountId20 {
 	fn from(pk: ecdsa::Public) -> Self {
 		let decompressed = libsecp256k1::PublicKey::parse_compressed(&pk.0)
@@ -114,8 +159,34 @@ impl From<ecdsa::Public> for AccountId20 {
 	}
 }
 
-#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Eq, PartialEq, Clone, Encode, Decode, RuntimeDebug, TypeInfo)]
+impl From<[u8; 32]> for AccountId20 {
+	fn from(bytes: [u8; 32]) -> Self {
+		let mut buffer = [0u8; 20];
+		buffer.copy_from_slice(&bytes[..20]);
+		Self(buffer)
+	}
+}
+
+impl From<AccountId32> for AccountId20 {
+	fn from(account: AccountId32) -> Self {
+		let bytes: &[u8; 32] = account.as_ref();
+		Self::from(*bytes)
+	}
+}
+
+impl From<AccountId20> for Location {
+	fn from(id: AccountId20) -> Self {
+		Junction::AccountKey20 {
+			network: None,
+			key: id.into(),
+		}
+		.into()
+	}
+}
+
+#[derive(Clone, Eq, PartialEq)]
+#[derive(RuntimeDebug, Encode, Decode, MaxEncodedLen, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EthereumSignature(ecdsa::Signature);
 
 impl sp_runtime::traits::Verify for EthereumSignature {
@@ -140,9 +211,23 @@ impl sp_runtime::traits::Verify for EthereumSignature {
 	}
 }
 
+impl From<MultiSignature> for EthereumSignature {
+	fn from(signature: MultiSignature) -> Self {
+		match signature {
+			MultiSignature::Ed25519(_) => {
+				panic!("Ed25519 not supported for EthereumSignature")
+			}
+			MultiSignature::Sr25519(_) => {
+				panic!("Sr25519 not supported for EthereumSignature")
+			}
+			MultiSignature::Ecdsa(sig) => Self(sig),
+		}
+	}
+}
+
 impl EthereumSignature {
 	pub fn new(s: ecdsa::Signature) -> Self {
-		EthereumSignature(s)
+		Self(s)
 	}
 }
 
@@ -163,9 +248,8 @@ impl sp_runtime::traits::IdentifyAccount for EthereumSigner {
 	}
 }
 
-#[cfg(feature = "std")]
-impl std::fmt::Display for EthereumSigner {
-	fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for EthereumSigner {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(fmt, "{:?}", H160::from(self.0))
 	}
 }
