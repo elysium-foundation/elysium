@@ -70,7 +70,7 @@ export async function startFrontierNode(provider?: string): Promise<{
 
 	const cmd = BINARY_PATH;
 	const args = [
-		`--chain=dev`,
+		`--dev`,
 		`--validator`, // Required by manual sealing to author the blocks
 		`--execution=Native`, // Faster execution using native
 		`--no-telemetry`,
