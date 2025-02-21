@@ -39,9 +39,14 @@ members = [
 resolver = "2"
 
 [workspace.package]
-authors = ["Parity Technologies <admin@parity.io>"]
+authors = ["BloxBytes"]
 edition = "2021"
-repository = "https://github.com/paritytech/frontier/"
+repository = "https://github.com/ElysiumOffical/elysium"
+description = "Elysium provides the lightning-fast transaction speeds and unprecedented scalability. Elysium is optimized for your Game, NFT, AI, or metaverse project."
+homepage = 'https://elysiumchain.tech/'
+license = 'GPL-3.0-only'
+publish = false
+version = '9.0.0'
 
 [workspace.dependencies]
 smallvec = "1.10.0"

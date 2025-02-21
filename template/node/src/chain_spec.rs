@@ -45,7 +45,7 @@ fn properties() -> Properties {
     properties.insert("ss58Format".into(), SS58Prefix::get().into());
     properties
 }
-const UNITS: Balance = 2000 * LAVA;
+const UNITS: Balance = 2000000000000000000 * LAVA;
 
 pub fn development_config(enable_manual_seal: bool) -> ChainSpec {
     ChainSpec::builder(WASM_BINARY.expect("WASM not available"), Default::default())
@@ -82,6 +82,27 @@ pub fn local_testnet_config() -> ChainSpec {
             ],
             vec![ // Initial PoA authorities
                   authority_keys_from_seed("Alice")
+            ],
+            CHAIN_ID, // Chain ID
+            false,
+        ))
+        .build()
+}
+pub fn prod_mainnet_config() -> ChainSpec {
+    ChainSpec::builder(WASM_BINARY.expect("WASM not available"), Default::default())
+        .with_name("Elysium Mainnet")
+        .with_id("elysium_mainnet")
+        .with_chain_type(ChainType::Live)
+        .with_properties(properties())
+        .with_genesis_config_patch(testnet_genesis(
+            get_account_id_from_seed::<sr25519::Public>("Alice"), // Sudo account Alice
+            vec![ // Pre-funded accounts
+                  get_account_id_from_seed::<sr25519::Public>("Alice"),
+                  get_account_id_from_seed::<sr25519::Public>("Bob"),
+            ],
+            vec![ // Initial PoA authorities
+                  authority_keys_from_seed("Alice"),
+                  authority_keys_from_seed("Bob"),
             ],
             CHAIN_ID, // Chain ID
             false,
@@ -150,8 +171,8 @@ fn testnet_genesis(
 				.map(|k| (k, UNITS))
 				.collect::<Vec<_>>()
 		},
-		"aura": { "authorities": initial_authorities.iter().map(|x| (x.1.clone())).collect::<Vec<_>>() },
-		"grandpa": { "authorities": initial_authorities.iter().map(|x| (x.2.clone(), 1)).collect::<Vec<_>>() },
+		"aura": { "authorities": [] },
+		"grandpa": { "authorities": [] },
         "evmChainId": { "chainId": chain_id },
 		"evm": { "accounts": evm_accounts },
         "nodeAuthorization": NodeAuthorizationConfig {

@@ -1,13 +1,14 @@
 [package]
-name = "elysium"
-version = "12.0.0"
-license = "Unlicense"
-build = "build.rs"
-description = "A fresh FRAME-based Substrate node, ready for hacking."
-publish = false
+name = 'elysium'
+build = 'build.rs'
 authors = { workspace = true }
+description = { workspace = true }
 edition = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
 repository = { workspace = true }
+version = { workspace = true }
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -50,6 +51,7 @@ sp-consensus-aura = { workspace = true, features = ["default"] }
 sp-consensus-grandpa = { workspace = true, features = ["default"] }
 sp-core = { workspace = true, features = ["default"] }
 sp-inherents = { workspace = true, features = ["default"] }
+sp-keyring = { workspace = true }
 sp-io = { workspace = true, features = ["default"] }
 sp-offchain = { workspace = true, features = ["default"] }
 sp-runtime = { workspace = true, features = ["default"] }
@@ -87,32 +89,32 @@ substrate-build-script-utils = { workspace = true }
 
 [features]
 default = [
-	"rocksdb",
-	"sql",
-	"txpool",
-	"rpc-binary-search-estimate",
+    "rocksdb",
+    "sql",
+    "txpool",
+    "rpc-binary-search-estimate",
 ]
 rocksdb = [
-	"sc-cli/rocksdb",
-	"sc-service/rocksdb",
-	"fc-cli/rocksdb",
-	"fc-db/rocksdb",
-	"fc-mapping-sync/rocksdb",
-	"fc-rpc/rocksdb",
-	"elysium-runtime/with-rocksdb-weights",
+    "sc-cli/rocksdb",
+    "sc-service/rocksdb",
+    "fc-cli/rocksdb",
+    "fc-db/rocksdb",
+    "fc-mapping-sync/rocksdb",
+    "fc-rpc/rocksdb",
+    "elysium-runtime/with-rocksdb-weights",
 ]
 paritydb = [
-	"elysium-runtime/with-paritydb-weights",
+    "elysium-runtime/with-paritydb-weights",
 ]
 sql = [
-	"fc-db/sql",
-	"fc-mapping-sync/sql",
+    "fc-db/sql",
+    "fc-mapping-sync/sql",
 ]
 txpool = ["fc-rpc/txpool"]
 rpc-binary-search-estimate = ["fc-rpc/rpc-binary-search-estimate"]
 runtime-benchmarks = [
-	"frame-benchmarking/runtime-benchmarks",
-	"frame-benchmarking-cli/runtime-benchmarks",
-	"sc-service/runtime-benchmarks",
-	"elysium-runtime/runtime-benchmarks",
+    "frame-benchmarking/runtime-benchmarks",
+    "frame-benchmarking-cli/runtime-benchmarks",
+    "sc-service/runtime-benchmarks",
+    "elysium-runtime/runtime-benchmarks",
 ]

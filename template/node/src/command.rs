@@ -16,7 +16,7 @@ use crate::chain_spec::get_account_id_from_seed;
 
 impl SubstrateCli for Cli {
 	fn impl_name() -> String {
-		"Frontier Node".into()
+		"Elysium Node".into()
 	}
 
 	fn impl_version() -> String {
@@ -32,7 +32,7 @@ impl SubstrateCli for Cli {
 	}
 
 	fn support_url() -> String {
-		"support.anonymous.an".into()
+		"docs.elysiumchain.tech".into()
 	}
 
 	fn copyright_start_year() -> i32 {
@@ -45,6 +45,7 @@ impl SubstrateCli for Cli {
 				let enable_manual_seal = self.sealing.map(|_| true).unwrap_or_default();
 				Box::new(chain_spec::development_config(enable_manual_seal))
 			}
+			"live" => Box::new(chain_spec::prod_mainnet_config()),
 			"" | "local" => Box::new(chain_spec::local_testnet_config()),
 			path => Box::new(chain_spec::ChainSpec::from_json_file(
 				std::path::PathBuf::from(path),

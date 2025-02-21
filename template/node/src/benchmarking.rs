@@ -7,13 +7,13 @@ use scale_codec::Encode;
 // Substrate
 use sc_cli::Result;
 use sc_client_api::BlockBackend;
-use sp_core::{ecdsa, Pair};
+use sp_core::{sr25519, Pair};
 use sp_inherents::{InherentData, InherentDataProvider};
-use sp_runtime::{generic::Era, OpaqueExtrinsic, SaturatedConversion};
+use sp_runtime::{generic::Era, OpaqueExtrinsic, SaturatedConversion, AccountId32};
 // Frontier
 use fp_account::AccountId20;
 use elysium_runtime::{self as runtime, AccountId, Balance, BalancesCall, SystemCall};
-
+use sp_keyring::Sr25519Keyring;
 use crate::service::Client;
 
 /// Generates extrinsics for the `benchmark overhead` command.
@@ -40,7 +40,7 @@ impl frame_benchmarking_cli::ExtrinsicBuilder for RemarkBuilder {
 	}
 
 	fn build(&self, nonce: u32) -> std::result::Result<OpaqueExtrinsic, &'static str> {
-		let acc = ecdsa::Pair::from_string("//Bob", None).expect("static values are valid; qed");
+		let acc = Sr25519Keyring::Bob.pair();
 		let extrinsic: OpaqueExtrinsic = create_benchmark_extrinsic(
 			self.client.as_ref(),
 			acc,
@@ -83,12 +83,12 @@ impl frame_benchmarking_cli::ExtrinsicBuilder for TransferKeepAliveBuilder {
 	}
 
 	fn build(&self, nonce: u32) -> std::result::Result<OpaqueExtrinsic, &'static str> {
-		let acc = ecdsa::Pair::from_string("//Bob", None).expect("static values are valid; qed");
+		let acc = Sr25519Keyring::Bob.pair();
 		let extrinsic: OpaqueExtrinsic = create_benchmark_extrinsic(
 			self.client.as_ref(),
 			acc,
 			BalancesCall::transfer_keep_alive {
-				dest: self.dest,
+				dest: self.dest.clone().into(),
 				value: self.value,
 			}
 			.into(),
@@ -105,7 +105,7 @@ impl frame_benchmarking_cli::ExtrinsicBuilder for TransferKeepAliveBuilder {
 /// Note: Should only be used for benchmarking.
 pub fn create_benchmark_extrinsic(
 	client: &Client,
-	sender: ecdsa::Pair,
+	sender: sr25519::Pair,
 	call: runtime::RuntimeCall,
 	nonce: u32,
 ) -> runtime::UncheckedExtrinsic {
@@ -153,8 +153,8 @@ pub fn create_benchmark_extrinsic(
 
 	runtime::UncheckedExtrinsic::new_signed(
 		call,
-		AccountId20::from(sender.public()),
-		runtime::Signature::new(signature),
+		AccountId32::from(sender.public()).into(),
+		runtime::Signature::Sr25519(signature),
 		extra,
 	)
 }

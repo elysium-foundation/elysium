@@ -1,12 +1,12 @@
 [package]
 name = "elysium-runtime"
-version = "8.0.0"
-license = "Unlicense"
-description = "A fresh FRAME-based Substrate runtime, ready for hacking."
+license = 'GPL-3.0-only'
+description = "Elysium provides the lightning-fast transaction speeds and unprecedented scalability. Elysium is optimized for your Game, NFT, AI, or metaverse project."
 publish = false
 authors = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }
+version = {workspace = true}
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
