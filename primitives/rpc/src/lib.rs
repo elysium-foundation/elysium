@@ -95,6 +95,9 @@ sp_api::decl_runtime_apis! {
 		/// Returns FixedGasPrice::min_gas_price
 		fn gas_price() -> U256;
 
+		// SponsoredWallets to find a sponsor whose wallets include sender or receiver
+		fn check_sponsor_balance(sender: Address, receiver: Option<Address>) -> Option<U256>;
+
 		/// For a given account address, returns pallet_evm::AccountCodes.
 		fn account_code_at(address: Address) -> Vec<u8>;
 

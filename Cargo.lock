@@ -2041,6 +2041,7 @@ dependencies = [
  "pallet-multisig",
  "pallet-node-authorization",
  "pallet-session",
+ "pallet-sponsor",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -6283,6 +6284,23 @@ dependencies = [
  "sp-staking",
  "sp-state-machine",
  "sp-trie",
+]
+
+[[package]]
+name = "pallet-sponsor"
+version = "1.0.0-dev"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]

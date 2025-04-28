@@ -66,6 +66,7 @@ pallet-evm-precompile-simple = { workspace = true }
 pallet-hotfix-sufficients = { workspace = true }
 pallet-session = { workspace = true }
 pallet-authorship = { workspace = true }
+pallet-sponsor = { workspace = true }
 log = "0.4.25"
 
 [build-dependencies]
@@ -126,6 +127,7 @@ std = [
 	"pallet-multisig/std",
 	'pallet-session/std',
 	'substrate-validator-set/std',
+	'pallet-sponsor/std'
 ]
 runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",

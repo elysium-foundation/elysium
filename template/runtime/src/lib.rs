@@ -35,15 +35,12 @@ use sp_version::RuntimeVersion;
 use frame_support::weights::constants::RocksDbWeight as RuntimeDbWeight;
 use pallet_transaction_payment::{TargetedFeeAdjustment, Multiplier, FungibleAdapter};
 use sp_genesis_builder::PresetId;
-use fp_evm::weight_per_gas;
+// use fp_evm::weight_per_gas;
 use fp_rpc::TransactionStatus;
 use pallet_ethereum::{
-    Call::transact, PostLogContent, Transaction as EthereumTransaction
+    Call::transact, PostLogContent, Transaction as EthereumTransaction,
 };
-use pallet_evm::{
-    Account as EVMAccount, EnsureAddressTruncated, FeeCalculator, HashedAddressMapping, Runner,
-    EVMCurrencyAdapter, GasWeightMapping
-};
+use pallet_evm::{Account as EVMAccount, EnsureAddressTruncated, FeeCalculator, HashedAddressMapping, Runner, EVMCurrencyAdapter, GasWeightMapping, OnChargeEVMTransaction, AddressMapping};
 use frame_system::EnsureRoot;
 use smallvec::smallvec;
 pub use frame_support::{
@@ -57,6 +54,7 @@ pub use frame_support::{
     },
     dispatch::{DispatchClass, GetDispatchInfo, PostDispatchInfo},
 };
+use frame_support::traits::{Currency, Imbalance};
 pub use frame_system::Call as SystemCall;
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
@@ -452,6 +450,78 @@ impl FeeCalculator for TransactionPaymentAsGasPrice {
         )
     }
 }
+
+// Custom OnChargeTransaction for sponsor fees
+pub struct SponsorFeeAdapter<C, D>(sp_std::marker::PhantomData<(C, D)>);
+
+impl<T, C, D> OnChargeEVMTransaction<T> for SponsorFeeAdapter<C, D>
+where
+    T: pallet_evm::Config,
+    C: Currency<T::AccountId>,
+    D: OnChargeEVMTransaction<T, LiquidityInfo=Option<C::NegativeImbalance>>,
+    C::NegativeImbalance: Imbalance<C::Balance>,
+    C::Balance: TryFrom<U256> + TryInto<u128>,
+{
+    type LiquidityInfo = Option<C::NegativeImbalance>;
+
+    fn withdraw_fee(
+        sender: &H160,
+        receiver: Option<&H160>,
+        fee: U256,
+    ) -> Result<Self::LiquidityInfo, pallet_evm::Error<T>> {
+        let sponsor_wallet = pallet_sponsor::SponsoredWallets::<Runtime>::iter()
+            .find(|(_sponsor, wallets)| wallets.contains(sender) || receiver.map_or(false, |r| wallets.contains(r)))
+            .map(|(sponsor, _)| sponsor);
+
+        if let Some(sponsor_wallet) = sponsor_wallet {
+            // Deduct fee from sponsor (Address C)
+            let sponsor_account = T::AddressMapping::into_account_id(sponsor_wallet);
+            let fee_balance = fee
+                .try_into()
+                .map_err(|_| { pallet_evm::Error::<T>::BalanceLow })?;
+
+            // Attempt to withdraw fee from Wallet C
+            match C::withdraw(
+                &sponsor_account,
+                fee_balance,
+                frame_support::traits::WithdrawReasons::FEE,
+                frame_support::traits::ExistenceRequirement::KeepAlive,
+            ) {
+                Ok(negative) => { Ok(Some(negative)) }
+                Err(_e) => { Err(pallet_evm::Error::<T>::BalanceLow) }
+            }
+        } else if fee.is_zero() {
+            // Zero fee: skip withdrawal
+            Ok(None)
+        } else {
+            D::withdraw_fee(sender, None, fee)
+        }
+    }
+
+    fn correct_and_deposit_fee(
+        sender: &H160,
+        corrected_fee: U256,
+        base_fee: U256,
+        already_withdrawn: Self::LiquidityInfo,
+        receiver: Option<&H160>,
+    ) -> Self::LiquidityInfo {
+        let sponsor_wallet = pallet_sponsor::SponsoredWallets::<Runtime>::iter()
+            .find(|(_sponsor, wallets)| wallets.contains(sender) || receiver.map_or(false, |r| wallets.contains(r)))
+            .map(|(sponsor, _)| sponsor);
+
+        if let Some(_sponsor_wallet) = sponsor_wallet {
+            already_withdrawn
+        }else{
+            D::correct_and_deposit_fee(sender, corrected_fee, base_fee, already_withdrawn, receiver)
+        }
+
+    }
+
+    fn pay_priority_fee(tip: Self::LiquidityInfo) {
+        D::pay_priority_fee(tip);
+    }
+}
+
 parameter_types! {
     pub BlockGasLimit: U256 = U256::from(NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT.ref_time() / WEIGHT_PER_GAS);
 	pub PrecompilesValue: FrontierPrecompiles<Runtime> = FrontierPrecompiles::<_>::new();
@@ -477,7 +547,11 @@ impl pallet_evm::Config for Runtime {
     type ChainId = EVMChainId;
     type BlockGasLimit = BlockGasLimit;
     type Runner = pallet_evm::runner::stack::Runner<Self>;
-    type OnChargeTransaction = EVMCurrencyAdapter<Balances, crate::impls::DealWithEVMFees>;
+    // type OnChargeTransaction = EVMCurrencyAdapter<Balances, crate::impls::DealWithEVMFees>;
+    type OnChargeTransaction = SponsorFeeAdapter<
+        Balances,
+        EVMCurrencyAdapter<Balances, crate::impls::DealWithEVMFees>,
+    >;
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated<Aura>;
     type GasLimitPovSizeRatio = GasLimitPovSizeRatio;
@@ -671,6 +745,11 @@ pub mod pallet_manual_seal {
 
 impl pallet_manual_seal::Config for Runtime {}
 
+impl pallet_sponsor::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type MaxSponsoredWallets = ConstU32<100>;
+}
+
 // ==============================
 // @@ Construct Runtime  @@
 // Purpose:
@@ -752,6 +831,9 @@ mod runtime {
 
     #[runtime::pallet_index(19)]
     pub type ManualSeal = pallet_manual_seal;
+
+    #[runtime::pallet_index(20)]
+    pub type Sponsor = pallet_sponsor;
 }
 
 #[derive(Clone)]
@@ -1052,6 +1134,20 @@ impl_runtime_apis! {
 			let (gas_price, _) = <Runtime as pallet_evm::Config>::FeeCalculator::min_gas_price();
 			gas_price
 		}
+
+        fn check_sponsor_balance(sender: H160, receiver: Option<H160>) -> Option<U256> {
+            // Iterate over SponsoredWallets to find a sponsor whose wallets include sender or receiver
+            let sponsor_wallet = pallet_sponsor::SponsoredWallets::<Runtime>::iter()
+                .find(|(_sponsor, wallets)| {
+                    wallets.contains(&sender) || receiver.map_or(false, |r| wallets.contains(&r))
+                })
+                .map(|(sponsor, _)| sponsor);
+
+            // If a sponsor wallet is found, return its EVM balance
+            sponsor_wallet.map(|sponsor| {
+                pallet_evm::Pallet::<Runtime>::account_basic(&sponsor).0.balance
+            })
+        }
 
 		fn account_code_at(address: H160) -> Vec<u8> {
 			pallet_evm::AccountCodes::<Runtime>::get(address)

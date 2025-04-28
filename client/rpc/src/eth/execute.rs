@@ -28,6 +28,8 @@ use sc_transaction_pool::ChainApi;
 use sp_api::{ApiExt, CallApiAt, CallApiAtParams, CallContext, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
+// use sp_core::bounded::BoundedVec;
+// use sp_core::{storage::StorageKey};
 use sp_externalities::Extensions;
 use sp_inherents::CreateInherentDataProviders;
 use sp_io::hashing::{blake2_128, twox_128};
@@ -35,13 +37,15 @@ use sp_runtime::{
 	traits::{Block as BlockT, HashingFor},
 	DispatchError, SaturatedConversion,
 };
+// use sp_runtime::generic::BlockId;
+// use sp_runtime::traits::{BlakeTwo256, ConstU32};
 use sp_state_machine::OverlayedChanges;
 // Frontier
 use fc_rpc_core::types::*;
 use fp_evm::{ExecutionInfo, ExecutionInfoV2};
 use fp_rpc::{EthereumRuntimeRPCApi, RuntimeStorageOverride};
 use fp_storage::constants::{EVM_ACCOUNT_CODES, EVM_ACCOUNT_STORAGES, PALLET_EVM};
-
+// use pallet_evm::{AddressMapping, HashedAddressMapping};
 use crate::{
 	eth::{Eth, EthConfig},
 	frontier_backend_client, internal_err,
@@ -413,6 +417,9 @@ where
 		request: TransactionRequest,
 		number_or_hash: Option<BlockNumberOrHash>,
 	) -> RpcResult<U256> {
+		let sender = request.from.unwrap_or_default(); // Default to zero address if None
+		let receiver = request.to;
+
 		let client = Arc::clone(&self.client);
 		let block_data_cache = Arc::clone(&self.block_data_cache);
 
@@ -441,6 +448,27 @@ where
 				(hash, api)
 			}
 		};
+
+
+		// ======= Sponsor wallet address fee
+
+		// Check if sender or receiver is a sponsored wallet
+		let sponsor_balance = api
+			.check_sponsor_balance(substrate_hash, sender, receiver)
+			.map_err(|e| {
+				internal_err(format!("Failed to check sponsor balance: {:?}", e))
+			})?;
+
+
+		if let Some(balance) = sponsor_balance {
+			let min_balance = U256::from(10) * U256::from(10).pow(U256::from(18)); // 10 ELY in wei
+			if balance < min_balance {
+				return Err(internal_err("Sponsor wallet balance is less than 10 ELY"));
+			}
+		}
+
+		// ======= Sponsor wallet address fee
+
 
 		// Adapt request for gas estimation.
 		let request = EC::EstimateGasAdapter::adapt_request(request);
