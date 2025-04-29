@@ -101,7 +101,7 @@ pub const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::from_parts(WEIGHT_MILLISECOND_P
 pub const MAXIMUM_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 pub const BLOCK_GAS_LIMIT: u64 = 75_000_000;
 pub const MAX_POV_SIZE: u64 = 5 * 1024 * 1024;
-pub const CHAIN_ID: u64 = 1569;
+pub const CHAIN_ID: u64 = 1339;
 pub const GAS_PER_SECOND: u64 = 40_000_000;
 const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND / GAS_PER_SECOND;
 // ==============================

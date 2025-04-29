@@ -12,7 +12,7 @@ Docker images are published for every tagged release.
 
 ```bash
 # Join the public testnet
-docker run vaival/elysium-testnet:latest --dev --ws-external --rpc-external --rpc-cors all
+docker run vaival/elysium-testnet:latest --dev --rpc-external --rpc-cors all
 ```
 
 You can find more detailed instructions to [Run a Node on Elysium
@@ -25,10 +25,10 @@ The above command will start the node in instant seal mode. It creates a block w
 
 ```bash
 # Author a block every 6 seconds.
-docker run vaival/elysium-testnet:latest --dev --ws-external --rpc-external --rpc-cors all --sealing 6000
+docker run vaival/elysium-testnet:latest --dev --rpc-external --rpc-cors all --sealing 6000
 
 # Manually control the block authorship and finality
-docker run vaival/elysium-testnet:latest --dev --ws-external --rpc-external --rpc-cors all --sealing manual
+docker run vaival/elysium-testnet:latest --dev --rpc-external --rpc-cors all --sealing manual
 ```
 
 ### Prefunded Development Addresses
