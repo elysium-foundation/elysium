@@ -99,8 +99,8 @@ sc-keystore = { git = "https://github.com/paritytech/polkadot-sdk", branch = "st
 sc-network = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sc-network-common = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sc-network-sync = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
-sc-offchain = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
-sc-rpc = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
+sc-offchain = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
+sc-rpc = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sc-rpc-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
 sc-service = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
 sc-telemetry = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
