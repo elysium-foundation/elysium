@@ -124,7 +124,7 @@ sp-io = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable24
 sp-keyring = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sp-offchain = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
-sp-runtime-interface = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
+sp-runtime-interface = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 sp-session = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
 sp-state-machine = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
 sp-std = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
