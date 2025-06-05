@@ -32,7 +32,7 @@ pub enum SyncStrategy {
 }
 
 pub type EthereumBlockNotificationSinks<T> =
-	parking_lot::Mutex<Vec<sc_utils::mpsc::TracingUnboundedSender<T>>>;
+parking_lot::Mutex<Vec<sc_utils::mpsc::TracingUnboundedSender<T>>>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct EthereumBlockNotification<Block: BlockT> {
