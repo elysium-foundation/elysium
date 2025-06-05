@@ -135,8 +135,8 @@ sp-version = { git = "https://github.com/paritytech/polkadot-sdk", branch = "sta
 sp-weights = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 sp-staking = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 # Substrate FRAME
-frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
-frame-executive = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
+frame-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
+frame-executive = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 frame-support = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
 frame-system = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
 frame-system-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
