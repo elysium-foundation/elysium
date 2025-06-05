@@ -91,9 +91,9 @@ sc-cli = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2
 sc-client-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sc-client-db = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 sc-consensus = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
-sc-consensus-aura = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
-sc-consensus-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
-sc-consensus-manual-seal = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
+sc-consensus-aura = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
+sc-consensus-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
+sc-consensus-manual-seal = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sc-executor = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
 sc-keystore = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
 sc-network = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
