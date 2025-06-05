@@ -104,7 +104,7 @@ sc-rpc = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2
 sc-rpc-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sc-service = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 sc-telemetry = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
-sc-transaction-pool = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
+sc-transaction-pool = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sc-transaction-pool-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
 sc-utils = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
 # Substrate Primitive
