@@ -1,21 +1,20 @@
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 // This file is part of Frontier.
+
+// Copyright (c) Moonsong Labs.
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// Copyright (c) 2019-2022 Moonsong Labs.
-// Copyright (c) 2023 Parity Technologies (UK) Ltd.
+// 	http://www.apache.org/licenses/LICENSE-2.0
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use super::*;
 
@@ -45,7 +44,7 @@ impl Precompile {
 		precompile.process_impl_attr(impl_)?;
 		for mut item in &mut impl_.items {
 			// We only interact with methods and leave the rest as-is.
-			if let syn::ImplItem::Method(ref mut method) = &mut item {
+			if let syn::ImplItem::Fn(ref mut method) = &mut item {
 				precompile.process_method(method)?;
 			}
 		}
@@ -114,7 +113,7 @@ impl Precompile {
 	}
 
 	/// Process a single method, looking for attributes and checking mandatory parameters.
-	fn process_method(&mut self, method: &mut syn::ImplItemMethod) -> syn::Result<()> {
+	fn process_method(&mut self, method: &mut syn::ImplItemFn) -> syn::Result<()> {
 		// Take (remove) all attributes related to this macro.
 		let attrs = attr::take_attributes::<attr::MethodAttr>(&mut method.attrs)?;
 
@@ -398,11 +397,7 @@ impl Precompile {
 	}
 
 	/// Process the discriminant function.
-	fn parse_discriminant_fn(
-		&mut self,
-		span: Span,
-		method: &syn::ImplItemMethod,
-	) -> syn::Result<()> {
+	fn parse_discriminant_fn(&mut self, span: Span, method: &syn::ImplItemFn) -> syn::Result<()> {
 		if !self.tagged_as_precompile_set {
 			let msg = "The impl block must be tagged with `#[precompile::precompile_set]` for
 			the discriminant attribute to be used";
@@ -473,7 +468,7 @@ impl Precompile {
 	}
 
 	/// Process the pre_check function.
-	fn parse_pre_check_fn(&mut self, span: Span, method: &syn::ImplItemMethod) -> syn::Result<()> {
+	fn parse_pre_check_fn(&mut self, span: Span, method: &syn::ImplItemFn) -> syn::Result<()> {
 		if self.pre_check.is_some() {
 			let msg = "A Precompile can only have 1 pre_check function";
 			return Err(syn::Error::new(span, msg));
@@ -591,7 +586,7 @@ ensuring the Solidity function signatures are correct.";
 					if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
 						let types = args.args.iter().filter_map(|arg| match arg {
 							syn::GenericArgument::Type(ty)
-							| syn::GenericArgument::Binding(syn::Binding { ty, .. }) => Some(ty),
+							| syn::GenericArgument::AssocType(syn::AssocType { ty, .. }) => Some(ty),
 							_ => None,
 						});
 
