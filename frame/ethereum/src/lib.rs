@@ -59,6 +59,7 @@ use sp_runtime::{
 	},
 	RuntimeDebug, SaturatedConversion,
 };
+use sp_version::RuntimeVersion;
 // Frontier
 use fp_consensus::{PostLog, PreLog, FRONTIER_ENGINE_ID};
 pub use fp_ethereum::TransactionData;
@@ -192,9 +193,10 @@ pub mod pallet {
 	#[pallet::origin]
 	pub type Origin = RawOrigin;
 
-	#[pallet::config]
+	#[pallet::config(with_default)]
 	pub trait Config: frame_system::Config + pallet_evm::Config {
 		/// The overarching event type.
+		#[pallet::no_default_bounds]
 		type RuntimeEvent: From<Event> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		/// How Ethereum state root is calculated.
 		type StateRoot: Get<H256>;
@@ -202,6 +204,32 @@ pub mod pallet {
 		type PostLogContent: Get<PostLogContent>;
 		/// The maximum length of the extra data in the Executed event.
 		type ExtraDataLength: Get<u32>;
+	}
+
+	pub mod config_preludes {
+		use super::*;
+		use frame_support::{derive_impl, parameter_types};
+
+		pub struct TestDefaultConfig;
+
+		#[derive_impl(frame_system::config_preludes::TestDefaultConfig, no_aggregated_types)]
+		impl frame_system::DefaultConfig for TestDefaultConfig {}
+
+		#[derive_impl(pallet_evm::config_preludes::TestDefaultConfig, no_aggregated_types)]
+		impl pallet_evm::DefaultConfig for TestDefaultConfig {}
+
+		parameter_types! {
+			pub const PostBlockAndTxnHashes: PostLogContent = PostLogContent::BlockAndTxnHashes;
+		}
+
+		#[register_default_impl(TestDefaultConfig)]
+		impl DefaultConfig for TestDefaultConfig {
+			#[inject_runtime_type]
+			type RuntimeEvent = ();
+			type StateRoot = IntermediateStateRoot<Self::Version>;
+			type PostLogContent = PostBlockAndTxnHashes;
+			type ExtraDataLength = ConstU32<30>;
+		}
 	}
 
 	#[pallet::hooks]
@@ -227,7 +255,6 @@ pub mod pallet {
 					UniqueSaturatedInto::<u32>::unique_saturated_into(to_remove),
 				));
 			}
-			Pending::<T>::kill();
 		}
 
 		fn on_initialize(_: BlockNumberFor<T>) -> Weight {
@@ -320,10 +347,10 @@ pub mod pallet {
 		PreLogExists,
 	}
 
-	/// Current building block's transactions and receipts.
+	/// Mapping from transaction index to transaction in the current building block.
 	#[pallet::storage]
 	pub type Pending<T: Config> =
-		StorageValue<_, Vec<(Transaction, TransactionStatus, Receipt)>, ValueQuery>;
+		CountedStorageMap<_, Identity, u32, (Transaction, TransactionStatus, Receipt), OptionQuery>;
 
 	/// The current Ethereum block.
 	#[pallet::storage]
@@ -408,22 +435,25 @@ impl<T: Config> Pallet<T> {
 	}
 
 	fn store_block(post_log: Option<PostLogContent>, block_number: U256) {
-		let mut transactions = Vec::new();
-		let mut statuses = Vec::new();
-		let mut receipts = Vec::new();
+		let transactions_count = Pending::<T>::count();
+		let mut transactions = Vec::with_capacity(transactions_count as usize);
+		let mut statuses = Vec::with_capacity(transactions_count as usize);
+		let mut receipts = Vec::with_capacity(transactions_count as usize);
 		let mut logs_bloom = Bloom::default();
 		let mut cumulative_gas_used = U256::zero();
-		for (transaction, status, receipt) in Pending::<T>::get() {
-			transactions.push(transaction);
-			statuses.push(status);
-			receipts.push(receipt.clone());
-			let (logs, used_gas) = match receipt {
-				Receipt::Legacy(d) | Receipt::EIP2930(d) | Receipt::EIP1559(d) => {
-					(d.logs.clone(), d.used_gas)
-				}
-			};
-			cumulative_gas_used = used_gas;
-			Self::logs_bloom(logs, &mut logs_bloom);
+		for transaction_index in 0..transactions_count {
+			if let Some((transaction, status, receipt)) = Pending::<T>::take(transaction_index) {
+				transactions.push(transaction);
+				statuses.push(status);
+				receipts.push(receipt.clone());
+				let (logs, used_gas) = match receipt {
+					Receipt::Legacy(d) | Receipt::EIP2930(d) | Receipt::EIP1559(d) => {
+						(d.logs.clone(), d.used_gas)
+					}
+				};
+				cumulative_gas_used = used_gas;
+				Self::logs_bloom(logs, &mut logs_bloom);
+			}
 		}
 
 		let ommers = Vec::<ethereum::Header>::new();
@@ -519,7 +549,7 @@ impl<T: Config> Pallet<T> {
 		// Do not allow transactions for which `tx.sender` has any code deployed.
 		//
 		// This check should be done on the transaction validation (here) **and**
-		// on trnasaction execution, otherwise a contract tx will be included in
+		// on transaction execution, otherwise a contract tx will be included in
 		// the mempool and pollute the mempool forever.
 		if !pallet_evm::AccountCodes::<T>::get(origin).is_empty() {
 			return Err(InvalidTransaction::BadSigner.into());
@@ -569,9 +599,8 @@ impl<T: Config> Pallet<T> {
 	) -> Result<(PostDispatchInfo, CallOrCreateInfo), DispatchErrorWithPostInfo> {
 		let (to, _, info) = Self::execute(source, &transaction, None)?;
 
-		let pending = Pending::<T>::get();
 		let transaction_hash = transaction.hash();
-		let transaction_index = pending.len() as u32;
+		let transaction_index = Pending::<T>::count();
 
 		let (reason, status, weight_info, used_gas, dest, extra_data) = match info.clone() {
 			CallOrCreateInfo::Call(info) => (
@@ -647,7 +676,9 @@ impl<T: Config> Pallet<T> {
 			};
 			let logs_bloom = status.logs_bloom;
 			let logs = status.clone().logs;
-			let cumulative_gas_used = if let Some((_, _, receipt)) = pending.last() {
+			let cumulative_gas_used = if let Some((_, _, receipt)) =
+				Pending::<T>::get(transaction_index.saturating_sub(1))
+			{
 				match receipt {
 					Receipt::Legacy(d) | Receipt::EIP2930(d) | Receipt::EIP1559(d) => {
 						d.used_gas.saturating_add(used_gas.effective)
@@ -678,7 +709,7 @@ impl<T: Config> Pallet<T> {
 			}
 		};
 
-		Pending::<T>::append((transaction, status, receipt));
+		Pending::<T>::insert(transaction_index, (transaction, status, receipt));
 
 		Self::deposit_event(Event::Executed {
 			from: source,
@@ -968,9 +999,9 @@ pub enum ReturnValue {
 }
 
 pub struct IntermediateStateRoot<T>(PhantomData<T>);
-impl<T: Config> Get<H256> for IntermediateStateRoot<T> {
+impl<T: Get<RuntimeVersion>> Get<H256> for IntermediateStateRoot<T> {
 	fn get() -> H256 {
-		let version = T::Version::get().state_version();
+		let version = T::get().state_version();
 		H256::decode(&mut &sp_io::storage::root(version)[..])
 			.expect("Node is configured to use the same hash; qed")
 	}
