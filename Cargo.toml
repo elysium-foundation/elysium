@@ -89,7 +89,7 @@ sc-block-builder = { git = "https://github.com/paritytech/polkadot-sdk", branch 
 sc-chain-spec = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
 sc-cli = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 sc-client-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409" }
-sc-client-db = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407", default-features = false }
+sc-client-db = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2409", default-features = false }
 sc-consensus = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
 sc-consensus-aura = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
 sc-consensus-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2407" }
