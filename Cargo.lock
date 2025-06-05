@@ -6923,8 +6923,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "sp-crypto-hashing",
- "sp-std",
- "syn 1.0.109",
+ "syn 2.0.96",
  "trybuild",
 ]
 
