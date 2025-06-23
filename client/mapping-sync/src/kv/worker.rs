@@ -245,8 +245,8 @@ mod tests {
 		let backend = builder.backend();
 		// Client
 		let (client, _) =
-			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
-		let mut client = Arc::new(client);
+			builder.build_with_native_executor::<frontier_template_runtime::RuntimeApi, _>(None);
+		let client = Arc::new(client);
 		// Overrides
 		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 
@@ -260,7 +260,7 @@ mod tests {
 					},
 				},
 			)
-			.expect("frontier backend"),
+				.expect("frontier backend"),
 		);
 
 		let notification_stream = client.clone().import_notification_stream();
@@ -287,8 +287,8 @@ mod tests {
 				Arc::new(test_sync_oracle),
 				pubsub_notification_sinks_inner,
 			)
-			.for_each(|()| future::ready(()))
-			.await
+				.for_each(|()| future::ready(()))
+				.await
 		});
 
 		{
@@ -387,8 +387,8 @@ mod tests {
 		let backend = builder.backend();
 		// Client
 		let (client, _) =
-			builder.build_with_native_executor::<elysium_runtime::RuntimeApi, _>(None);
-		let mut client = Arc::new(client);
+			builder.build_with_native_executor::<frontier_template_runtime::RuntimeApi, _>(None);
+		let client = Arc::new(client);
 		// Overrides
 		let storage_override = Arc::new(SchemaV3StorageOverride::new(client.clone()));
 
@@ -402,7 +402,7 @@ mod tests {
 					},
 				},
 			)
-			.expect("frontier backend"),
+				.expect("frontier backend"),
 		);
 
 		let notification_stream = client.clone().import_notification_stream();
@@ -429,8 +429,8 @@ mod tests {
 				Arc::new(test_sync_oracle),
 				pubsub_notification_sinks_inner,
 			)
-			.for_each(|()| future::ready(()))
-			.await
+				.for_each(|()| future::ready(()))
+				.await
 		});
 
 		{

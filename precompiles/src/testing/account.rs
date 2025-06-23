@@ -1,26 +1,25 @@
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 // This file is part of Frontier.
+
+// Copyright (c) Moonsong Labs.
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// Copyright (c) 2019-2022 Moonsong Labs.
-// Copyright (c) 2023 Parity Technologies (UK) Ltd.
+// 	http://www.apache.org/licenses/LICENSE-2.0
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 use pallet_evm::AddressMapping;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
-use sp_core::{Decode, Encode, MaxEncodedLen, H160, H256};
+use sp_core::{keccak_256, Decode, Encode, MaxEncodedLen, H160, H256};
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 #[derive(Serialize, Deserialize, derive_more::Display)]
@@ -97,6 +96,94 @@ impl AddressMapping<MockAccount> for MockAccount {
 impl sp_runtime::traits::Convert<H160, MockAccount> for MockAccount {
 	fn convert(address: H160) -> MockAccount {
 		address.into()
+	}
+}
+
+#[derive(
+	Eq,
+	PartialEq,
+	Clone,
+	Encode,
+	Decode,
+	sp_core::RuntimeDebug,
+	TypeInfo,
+	Serialize,
+	Deserialize
+)]
+pub struct MockSignature(sp_core::ecdsa::Signature);
+
+impl From<sp_core::ecdsa::Signature> for MockSignature {
+	fn from(x: sp_core::ecdsa::Signature) -> Self {
+		MockSignature(x)
+	}
+}
+
+impl From<sp_runtime::MultiSignature> for MockSignature {
+	fn from(signature: sp_runtime::MultiSignature) -> Self {
+		match signature {
+			sp_runtime::MultiSignature::Ed25519(_) => {
+				panic!("Ed25519 not supported for MockSignature")
+			}
+			sp_runtime::MultiSignature::Sr25519(_) => {
+				panic!("Sr25519 not supported for MockSignature")
+			}
+			sp_runtime::MultiSignature::Ecdsa(sig) => Self(sig),
+		}
+	}
+}
+
+impl sp_runtime::traits::Verify for MockSignature {
+	type Signer = MockSigner;
+	fn verify<L: sp_runtime::traits::Lazy<[u8]>>(&self, mut msg: L, signer: &MockAccount) -> bool {
+		let mut m = [0u8; 32];
+		m.copy_from_slice(keccak_256(msg.get()).as_slice());
+		match sp_io::crypto::secp256k1_ecdsa_recover(self.0.as_ref(), &m) {
+			Ok(pubkey) => {
+				MockAccount(sp_core::H160::from_slice(
+					&keccak_256(&pubkey).as_slice()[12..32],
+				)) == *signer
+			}
+			Err(sp_io::EcdsaVerifyError::BadRS) => {
+				log::error!(target: "evm", "Error recovering: Incorrect value of R or S");
+				false
+			}
+			Err(sp_io::EcdsaVerifyError::BadV) => {
+				log::error!(target: "evm", "Error recovering: Incorrect value of V");
+				false
+			}
+			Err(sp_io::EcdsaVerifyError::BadSignature) => {
+				log::error!(target: "evm", "Error recovering: Invalid signature");
+				false
+			}
+		}
+	}
+}
+
+/// Public key for an Ethereum compatible account
+#[derive(
+	Eq,
+	PartialEq,
+	Ord,
+	PartialOrd,
+	Clone,
+	Encode,
+	Decode,
+	sp_core::RuntimeDebug,
+	TypeInfo
+)]
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+pub struct MockSigner([u8; 20]);
+
+impl sp_runtime::traits::IdentifyAccount for MockSigner {
+	type AccountId = MockAccount;
+	fn into_account(self) -> MockAccount {
+		MockAccount(self.0.into())
+	}
+}
+
+impl From<[u8; 20]> for MockSigner {
+	fn from(x: [u8; 20]) -> Self {
+		MockSigner(x)
 	}
 }
 

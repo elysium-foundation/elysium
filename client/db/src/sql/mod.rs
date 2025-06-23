@@ -248,13 +248,13 @@ where
 						is_canon)
 					VALUES (?, ?, ?, ?, ?)",
 				)
-				.bind(ethereum_block_hash)
-				.bind(substrate_block_hash)
-				.bind(block_number)
-				.bind(schema)
-				.bind(is_canon)
-				.execute(self.pool())
-				.await?;
+					.bind(ethereum_block_hash)
+					.bind(substrate_block_hash)
+					.bind(block_number)
+					.bind(schema)
+					.bind(is_canon)
+					.execute(self.pool())
+					.await?;
 			}
 			Some(substrate_genesis_hash)
 		} else {
@@ -366,8 +366,8 @@ where
 		let metadata = tokio::task::spawn_blocking(move || {
 			Self::insert_block_metadata_inner(client.clone(), hash, &*storage_override)
 		})
-		.await
-		.map_err(|_| Error::Protocol("tokio blocking metadata task failed".to_string()))??;
+			.await
+			.map_err(|_| Error::Protocol("tokio blocking metadata task failed".to_string()))??;
 
 		let mut tx = self.pool().begin().await?;
 
@@ -391,13 +391,13 @@ where
 					is_canon)
 				VALUES (?, ?, ?, ?, ?)",
 		)
-		.bind(ethereum_block_hash)
-		.bind(substrate_block_hash)
-		.bind(block_number)
-		.bind(schema)
-		.bind(is_canon)
-		.execute(&mut *tx)
-		.await?;
+			.bind(ethereum_block_hash)
+			.bind(substrate_block_hash)
+			.bind(block_number)
+			.bind(schema)
+			.bind(is_canon)
+			.execute(&mut *tx)
+			.await?;
 		for (i, &transaction_hash) in post_hashes.transaction_hashes.iter().enumerate() {
 			let ethereum_transaction_hash = transaction_hash.as_bytes();
 			let ethereum_transaction_index = i as i32;
@@ -413,12 +413,12 @@ where
 						ethereum_transaction_index)
 					VALUES (?, ?, ?, ?)",
 			)
-			.bind(ethereum_transaction_hash)
-			.bind(substrate_block_hash)
-			.bind(ethereum_block_hash)
-			.bind(ethereum_transaction_index)
-			.execute(&mut *tx)
-			.await?;
+				.bind(ethereum_transaction_hash)
+				.bind(substrate_block_hash)
+				.bind(ethereum_block_hash)
+				.bind(ethereum_transaction_index)
+				.execute(&mut *tx)
+				.await?;
 		}
 
 		sqlx::query("INSERT INTO sync_status(substrate_block_hash) VALUES (?)")
@@ -453,17 +453,17 @@ where
 				FROM sync_status
 				WHERE status = 0 AND substrate_block_hash = ?) RETURNING substrate_block_hash",
 			)
-			.bind(block_hash.as_bytes())
-			.fetch_one(&mut *tx)
-			.await
+				.bind(block_hash.as_bytes())
+				.fetch_one(&mut *tx)
+				.await
 			{
 				Ok(_) => {
 					// Spawn a blocking task to get log data from substrate backend.
 					let logs = tokio::task::spawn_blocking(move || {
 						Self::get_logs(storage_override, block_hash)
 					})
-					.await
-					.map_err(|_| Error::Protocol("tokio blocking task failed".to_string()))?;
+						.await
+						.map_err(|_| Error::Protocol("tokio blocking task failed".to_string()))?;
 
 					for log in logs {
 						let _ = sqlx::query(
@@ -478,26 +478,26 @@ where
 						substrate_block_hash)
 					VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 						)
-						.bind(log.address)
-						.bind(log.topic_1)
-						.bind(log.topic_2)
-						.bind(log.topic_3)
-						.bind(log.topic_4)
-						.bind(log.log_index)
-						.bind(log.transaction_index)
-						.bind(log.substrate_block_hash)
-						.execute(&mut *tx)
-						.await?;
+							.bind(log.address)
+							.bind(log.topic_1)
+							.bind(log.topic_2)
+							.bind(log.topic_3)
+							.bind(log.topic_4)
+							.bind(log.log_index)
+							.bind(log.transaction_index)
+							.bind(log.substrate_block_hash)
+							.execute(&mut *tx)
+							.await?;
 					}
 					Ok(tx.commit().await?)
 				}
 				Err(e) => Err(e),
 			}
 		}
-		.await
-		.map_err(|e| {
-			log::error!(target: "frontier-sql", "{e}");
-		});
+			.await
+			.map_err(|e| {
+				log::error!(target: "frontier-sql", "{e}");
+			});
 		// https://www.sqlite.org/pragma.html#pragma_optimize
 		let _ = sqlx::query("PRAGMA optimize").execute(&pool).await;
 		log::debug!(target: "frontier-sql", "Batch committed");
@@ -565,21 +565,21 @@ where
 			ON s.substrate_block_hash = b.substrate_block_hash
 			WHERE s.substrate_block_hash = ?",
 		)
-		.bind(block_hash.as_bytes().to_owned())
-		.fetch_optional(self.pool())
-		.await
-		.map(|result| {
-			result
-				.map(|row| {
-					let is_canon: i32 = row.get(0);
-					BlockIndexedStatus {
-						indexed: true,
-						canon: is_canon != 0,
-					}
-				})
-				.unwrap_or_default()
-		})
-		.unwrap_or_default()
+			.bind(block_hash.as_bytes().to_owned())
+			.fetch_optional(self.pool())
+			.await
+			.map(|result| {
+				result
+					.map(|row| {
+						let is_canon: i32 = row.get(0);
+						BlockIndexedStatus {
+							indexed: true,
+							canon: is_canon != 0,
+						}
+					})
+					.unwrap_or_default()
+			})
+			.unwrap_or_default()
 	}
 
 	/// Sets the provided block as canon.
@@ -605,8 +605,8 @@ where
 			)
 			ORDER BY block_number LIMIT 1",
 		)
-		.fetch_optional(self.pool())
-		.await
+			.fetch_optional(self.pool())
+			.await
 		{
 			Ok(result) => {
 				if let Some(row) = result {
@@ -633,8 +633,8 @@ where
 			WHERE b.is_canon = 1 AND s.status = 0
 			ORDER BY b.block_number LIMIT 1",
 		)
-		.fetch_optional(self.pool())
-		.await
+			.fetch_optional(self.pool())
+			.await
 		{
 			Ok(result) => {
 				if let Some(row) = result {
@@ -660,8 +660,8 @@ where
 			WHERE b.is_canon=1 AND s.status = 1
 			ORDER BY b.id DESC LIMIT 1",
 		)
-		.fetch_one(self.pool())
-		.await?;
+			.fetch_one(self.pool())
+			.await?;
 		Ok(H256::from_slice(
 			&row.try_get::<Vec<u8>, _>(0).unwrap_or_default()[..],
 		))
@@ -720,8 +720,8 @@ where
 			);
 			COMMIT;",
 		)
-		.execute(pool)
-		.await
+			.execute(pool)
+			.await
 	}
 
 	/// Create the Sqlite database indices if it does not already exist.
@@ -756,8 +756,8 @@ where
 			);
 			COMMIT;",
 		)
-		.execute(pool)
-		.await
+			.execute(pool)
+			.await
 	}
 }
 
@@ -794,30 +794,39 @@ impl<Block: BlockT<Hash = H256>> fc_api::Backend<Block> for Backend<Block> {
 				substrate_block_hash, ethereum_block_hash, ethereum_transaction_index
 			FROM transactions WHERE ethereum_transaction_hash = ?",
 		)
-		.bind(ethereum_transaction_hash)
-		.fetch_all(&self.pool)
-		.await
-		.unwrap_or_default()
-		.iter()
-		.map(|row| {
-			let substrate_block_hash =
-				H256::from_slice(&row.try_get::<Vec<u8>, _>(0).unwrap_or_default()[..]);
-			let ethereum_block_hash =
-				H256::from_slice(&row.try_get::<Vec<u8>, _>(1).unwrap_or_default()[..]);
-			let ethereum_transaction_index = row.try_get::<i32, _>(2).unwrap_or_default() as u32;
-			TransactionMetadata {
-				substrate_block_hash,
-				ethereum_block_hash,
-				ethereum_index: ethereum_transaction_index,
-			}
-		})
-		.collect();
+			.bind(ethereum_transaction_hash)
+			.fetch_all(&self.pool)
+			.await
+			.unwrap_or_default()
+			.iter()
+			.map(|row| {
+				let substrate_block_hash =
+					H256::from_slice(&row.try_get::<Vec<u8>, _>(0).unwrap_or_default()[..]);
+				let ethereum_block_hash =
+					H256::from_slice(&row.try_get::<Vec<u8>, _>(1).unwrap_or_default()[..]);
+				let ethereum_transaction_index = row.try_get::<i32, _>(2).unwrap_or_default() as u32;
+				TransactionMetadata {
+					substrate_block_hash,
+					ethereum_block_hash,
+					ethereum_index: ethereum_transaction_index,
+				}
+			})
+			.collect();
 
 		Ok(out)
 	}
 
 	fn log_indexer(&self) -> &dyn fc_api::LogIndexerBackend<Block> {
 		self
+	}
+
+	async fn first_block_hash(&self) -> Result<Block::Hash, String> {
+		// Retrieves the block hash for the earliest indexed block, maybe it's not canon.
+		sqlx::query("SELECT substrate_block_hash FROM blocks ORDER BY block_number ASC LIMIT 1")
+			.fetch_one(self.pool())
+			.await
+			.map(|row| H256::from_slice(&row.get::<Vec<u8>, _>(0)[..]))
+			.map_err(|e| format!("Failed to fetch oldest block hash: {}", e))
 	}
 
 	async fn latest_block_hash(&self) -> Result<Block::Hash, String> {
@@ -1029,7 +1038,7 @@ mod test {
 	use fp_storage::{EthereumStorageSchema, PALLET_ETHEREUM_SCHEMA};
 
 	type OpaqueBlock =
-		Block<Header<u64, BlakeTwo256>, substrate_test_runtime_client::runtime::Extrinsic>;
+	Block<Header<u64, BlakeTwo256>, substrate_test_runtime_client::runtime::Extrinsic>;
 
 	struct TestFilter {
 		pub from_block: u64,
@@ -1120,8 +1129,8 @@ mod test {
 			None,
 			storage_override.clone(),
 		)
-		.await
-		.expect("indexer pool to be created");
+			.await
+			.expect("indexer pool to be created");
 
 		// Prepare test db data
 		// Addresses
@@ -1755,7 +1764,7 @@ mod test {
 				(substrate_hash_3, 1),
 			],
 		)
-		.await;
+			.await;
 
 		backend
 			.canonicalize(&[substrate_hash_2], &[substrate_hash_1])
@@ -1770,7 +1779,7 @@ mod test {
 				(substrate_hash_3, 1),
 			],
 		)
-		.await;
+			.await;
 	}
 
 	#[test]

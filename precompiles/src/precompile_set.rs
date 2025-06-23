@@ -1,31 +1,32 @@
-// SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 // This file is part of Frontier.
+
+// Copyright (c) Moonsong Labs.
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// Copyright (c) 2019-2022 Moonsong Labs.
-// Copyright (c) 2023 Parity Technologies (UK) Ltd.
+// 	http://www.apache.org/licenses/LICENSE-2.0
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //! Provide utils to assemble precompiles and precompilesets into a
 //! final precompile set with security checks. All security checks are enabled by
-//! default and must be disabled explicely throught type annotations.
+//! default and must be disabled explicely through type annotations.
 
 use crate::{
 	evm::handle::PrecompileHandleExt,
 	solidity::{codec::String, revert::revert},
 	EvmResult,
 };
+use alloc::{collections::btree_map::BTreeMap, vec, vec::Vec};
+use core::{cell::RefCell, marker::PhantomData, ops::RangeInclusive};
 use fp_evm::{
 	ExitError, IsPrecompileResult, Precompile, PrecompileFailure, PrecompileHandle,
 	PrecompileResult, PrecompileSet,
@@ -34,10 +35,6 @@ use frame_support::pallet_prelude::Get;
 use impl_trait_for_tuples::impl_for_tuples;
 use pallet_evm::AddressMapping;
 use sp_core::{H160, H256};
-use sp_std::{
-	cell::RefCell, collections::btree_map::BTreeMap, marker::PhantomData, ops::RangeInclusive, vec,
-	vec::Vec,
-};
 
 /// Trait representing checks that can be made on a precompile call.
 /// Types implementing this trait are made to be chained in a tuple.
@@ -132,6 +129,7 @@ impl<T> From<DiscriminantResult<T>> for IsPrecompileResult {
 pub enum PrecompileKind {
 	Single(H160),
 	Prefixed(Vec<u8>),
+	Multiple(Vec<H160>),
 }
 
 #[derive(Debug, Clone)]
@@ -719,7 +717,7 @@ where
 				Ok(mut recursion_level_map) => {
 					let recursion_level = match recursion_level_map.get_mut(&code_address) {
 						Some(recursion_level) => recursion_level,
-						None => return Some(Err(revert("Couldn't retreive precompile nesting"))),
+						None => return Some(Err(revert("Couldn't retrieve precompile nesting"))),
 					};
 
 					*recursion_level -= 1;
@@ -831,6 +829,68 @@ impl<A> IsActivePrecompile for RevertPrecompile<A> {
 	fn is_active_precompile(&self, _address: H160, _gas: u64) -> IsPrecompileResult {
 		IsPrecompileResult::Answer {
 			is_precompile: true,
+			extra_cost: 0,
+		}
+	}
+}
+
+/// Precompiles that were removed from a precompile set.
+/// Still considered precompiles but are inactive and always revert.
+pub struct RemovedPrecompilesAt<A>(PhantomData<A>);
+impl<A> PrecompileSetFragment for RemovedPrecompilesAt<A>
+where
+	A: Get<Vec<H160>>,
+{
+	#[inline(always)]
+	fn new() -> Self {
+		Self(PhantomData)
+	}
+
+	#[inline(always)]
+	fn execute<R: pallet_evm::Config>(
+		&self,
+		handle: &mut impl PrecompileHandle,
+	) -> Option<PrecompileResult> {
+		if A::get().contains(&handle.code_address()) {
+			Some(Err(revert("Removed precompile")))
+		} else {
+			None
+		}
+	}
+
+	#[inline(always)]
+	fn is_precompile(&self, address: H160, _gas: u64) -> IsPrecompileResult {
+		IsPrecompileResult::Answer {
+			is_precompile: A::get().contains(&address),
+			extra_cost: 0,
+		}
+	}
+
+	#[inline(always)]
+	fn used_addresses(&self) -> Vec<H160> {
+		A::get()
+	}
+
+	fn summarize_checks(&self) -> Vec<PrecompileCheckSummary> {
+		vec![PrecompileCheckSummary {
+			name: None,
+			precompile_kind: PrecompileKind::Multiple(A::get()),
+			recursion_limit: Some(0),
+			accept_delegate_call: true,
+			callable_by_smart_contract: "Reverts in all cases".into(),
+			callable_by_precompile: "Reverts in all cases".into(),
+		}]
+	}
+}
+
+impl<A> IsActivePrecompile for RemovedPrecompilesAt<A>
+where
+	Self: PrecompileSetFragment,
+{
+	#[inline(always)]
+	fn is_active_precompile(&self, _address: H160, _gas: u64) -> IsPrecompileResult {
+		IsPrecompileResult::Answer {
+			is_precompile: false,
 			extra_cost: 0,
 		}
 	}
@@ -1087,13 +1147,14 @@ impl<R: pallet_evm::Config, P: PrecompileSetFragment> PrecompileSetBuilder<R, P>
 		}
 	}
 
-	/// Return the list of addresses contained in this PrecompileSet.
-	pub fn used_addresses() -> impl Iterator<Item = R::AccountId> {
-		Self::new()
-			.inner
-			.used_addresses()
-			.into_iter()
-			.map(R::AddressMapping::into_account_id)
+	/// Return the list of mapped addresses contained in this PrecompileSet.
+	pub fn used_addresses() -> impl Iterator<Item = pallet_evm::AccountIdOf<R>> {
+		Self::used_addresses_h160().map(R::AddressMapping::into_account_id)
+	}
+
+	/// Return the list of H160 addresses contained in this PrecompileSet.
+	pub fn used_addresses_h160() -> impl Iterator<Item = H160> {
+		Self::new().inner.used_addresses().into_iter()
 	}
 
 	pub fn summarize_checks(&self) -> Vec<PrecompileCheckSummary> {

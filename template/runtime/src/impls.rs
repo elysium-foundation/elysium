@@ -103,7 +103,7 @@ where
     + pallet_authorship::Config
     + pallet_session::Config,
 {
-    fn on_unbalanceds<B>(
+    fn on_unbalanceds<B, C>(
         mut fees_then_tips: impl Iterator<Item=Credit<R::AccountId, pallet_balances::Pallet<R>>>,
     ) {
         if let Some(fees) = fees_then_tips.next() {
@@ -128,7 +128,7 @@ where
 pub struct DealWithEVMFees;
 impl OnUnbalanced<NegativeImbalance> for DealWithEVMFees
 {
-    fn on_unbalanceds<B>(mut fees_then_tips: impl Iterator<Item=NegativeImbalance>) {
+    fn on_unbalanceds<B, C>(mut fees_then_tips: impl Iterator<Item=NegativeImbalance>) {
         if let Some(fees) = fees_then_tips.next() {
             let mut split = fees.ration(70, 30);
             if let Some(tips) = fees_then_tips.next() {

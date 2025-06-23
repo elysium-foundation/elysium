@@ -257,15 +257,15 @@ where
 	for _ in 0..limit {
 		synced_any = synced_any
 			|| sync_one_block(
-				client,
-				substrate_backend,
-				storage_override.clone(),
-				frontier_backend,
-				sync_from,
-				strategy,
-				sync_oracle.clone(),
-				pubsub_notification_sinks.clone(),
-			)?;
+			client,
+			substrate_backend,
+			storage_override.clone(),
+			frontier_backend,
+			sync_from,
+			strategy,
+			sync_oracle.clone(),
+			pubsub_notification_sinks.clone(),
+		)?;
 	}
 
 	Ok(synced_any)
