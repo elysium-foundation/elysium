@@ -260,7 +260,7 @@ mod tests {
 					},
 				},
 			)
-				.expect("frontier backend"),
+			.expect("frontier backend"),
 		);
 
 		let notification_stream = client.clone().import_notification_stream();
@@ -287,8 +287,8 @@ mod tests {
 				Arc::new(test_sync_oracle),
 				pubsub_notification_sinks_inner,
 			)
-				.for_each(|()| future::ready(()))
-				.await
+			.for_each(|()| future::ready(()))
+			.await
 		});
 
 		{
@@ -402,7 +402,7 @@ mod tests {
 					},
 				},
 			)
-				.expect("frontier backend"),
+			.expect("frontier backend"),
 		);
 
 		let notification_stream = client.clone().import_notification_stream();
@@ -429,8 +429,8 @@ mod tests {
 				Arc::new(test_sync_oracle),
 				pubsub_notification_sinks_inner,
 			)
-				.for_each(|()| future::ready(()))
-				.await
+			.for_each(|()| future::ready(()))
+			.await
 		});
 
 		{
