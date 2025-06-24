@@ -343,7 +343,7 @@ mod tests {
 	};
 
 	type OpaqueBlock =
-	Block<Header<u64, BlakeTwo256>, substrate_test_runtime_client::runtime::Extrinsic>;
+		Block<Header<u64, BlakeTwo256>, substrate_test_runtime_client::runtime::Extrinsic>;
 
 	pub fn open_frontier_backend<Block: BlockT, C: HeaderBackend<Block>>(
 		client: Arc<C>,
@@ -383,8 +383,8 @@ mod tests {
 		for setting in settings {
 			let (client, _) = TestClientBuilder::new()
 				.build_with_native_executor::<substrate_test_runtime_client::runtime::RuntimeApi, _>(
-					None,
-				);
+				None,
+			);
 			let client = Arc::new(client);
 
 			// Genesis block
@@ -521,8 +521,8 @@ mod tests {
 
 		let (client, _) = TestClientBuilder::new()
 			.build_with_native_executor::<substrate_test_runtime_client::runtime::RuntimeApi, _>(
-				None,
-			);
+			None,
+		);
 		let client = Arc::new(client);
 
 		let setting = crate::kv::DatabaseSettings {
