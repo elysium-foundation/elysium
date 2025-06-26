@@ -153,8 +153,8 @@ pub fn create_benchmark_extrinsic(
 
 	runtime::UncheckedExtrinsic::new_signed(
 		call,
-		AccountId20::from(sender.public()),
-		runtime::Signature::new(signature),
+		AccountId32::from(sender.public()).into(),
+		runtime::Signature::Sr25519(signature),
 		extra,
 	)
 }
