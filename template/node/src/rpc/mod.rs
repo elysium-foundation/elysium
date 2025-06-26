@@ -12,7 +12,6 @@ use sc_client_api::{
 };
 use sc_consensus_manual_seal::rpc::EngineCommand;
 use sc_rpc::SubscriptionTaskExecutor;
-use sc_rpc_api::DenyUnsafe;
 use sc_service::TransactionPool;
 use sc_transaction_pool::ChainApi;
 use sp_api::{CallApiAt, ProvideRuntimeApi};
@@ -21,7 +20,7 @@ use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 // Runtime
-use elysium_runtime::{AccountId, Balance, Hash, Nonce};
+use frontier_template_runtime::{AccountId, Balance, Hash, Nonce};
 
 mod eth;
 pub use self::eth::{create_eth, EthDeps};
@@ -32,8 +31,6 @@ pub struct FullDeps<B: BlockT, C, P, A: ChainApi, CT, CIDP> {
 	pub client: Arc<C>,
 	/// Transaction pool instance.
 	pub pool: Arc<P>,
-	/// Whether to deny unsafe calls
-	pub deny_unsafe: DenyUnsafe,
 	/// Manual seal command sink
 	pub command_sink: Option<mpsc::Sender<EngineCommand<Hash>>>,
 	/// Ethereum-compatibility specific dependencies.
@@ -88,12 +85,11 @@ where
 	let FullDeps {
 		client,
 		pool,
-		deny_unsafe,
 		command_sink,
 		eth,
 	} = deps;
 
-	io.merge(System::new(client.clone(), pool, deny_unsafe).into_rpc())?;
+	io.merge(System::new(client.clone(), pool).into_rpc())?;
 	io.merge(TransactionPayment::new(client).into_rpc())?;
 
 	if let Some(command_sink) = command_sink {
